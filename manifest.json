@@ -1,0 +1,36 @@
+{
+  "agent": {
+    "name": "blindguard",
+    "description": "Private Security Agent — audits code without seeing or stealing it",
+    "version": "0.1.0",
+    "author": "BlindGuard Team"
+  },
+  "identity": {
+    "code_hash_algorithm": "sha256",
+    "data_commitment_algorithm": "sha256",
+    "attestation_type": "tee"
+  },
+  "upgrade_policy": {
+    "require_version_bump": true,
+    "require_signed_manifest": true,
+    "allowed_signers": [
+      "blindguard-deployer"
+    ],
+    "minimum_version": "0.1.0",
+    "changelog_required": true
+  },
+  "capabilities": [
+    "static-analysis",
+    "vulnerability-detection",
+    "dependency-audit",
+    "secret-scanning"
+  ],
+  "eigencompute": {
+    "runtime": "docker",
+    "base_image": "python:3.12-slim",
+    "eigenai_model": "gpt-oss-120b-f16",
+    "deterministic": true,
+    "private_state": true,
+    "logs_visibility": "private"
+  }
+}
