@@ -1,30 +1,27 @@
-FROM python:3.12-slim
+FROM --platform=linux/amd64 python:3.12-slim
 
 LABEL maintainer="BlindGuard Team"
 LABEL description="Private Security Agent — audits code without seeing or stealing it"
 LABEL version="0.1.0"
 
-# Security: non-root user
-RUN groupadd -r blindguard && useradd -r -g blindguard blindguard
+USER root
 
 WORKDIR /app
 
-# Copy agent code
-COPY agent/ ./agent/
-COPY cli/ ./cli/
+COPY analyzer.py .
+COPY crypto.py .
+COPY server.py .
+COPY state.py .
+COPY upgrade.py .
+COPY blindguard_cli.py .
 COPY manifest.json .
+COPY sample_vulnerable_app.py .
 
-# State directory (TEE-encrypted in production)
-RUN mkdir -p /data/blindguard-state && chown -R blindguard:blindguard /data
+RUN mkdir -p /data/blindguard-state
 ENV BLINDGUARD_STATE_DIR=/data/blindguard-state
-
-# No external dependencies needed for core agent (stdlib only)
-# EigenAI is accessed via HTTP — no SDK install required
-
-USER blindguard
 
 EXPOSE 8000
 
 ENV PORT=8000
 
-CMD ["python", "-m", "agent.server"]
+CMD ["python3", "server.py"]
