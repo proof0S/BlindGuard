@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BlindGuard — Private Security Agent</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: #0a0a0f;
+  --bg-surface: #12121a;
+  --bg-card: #1a1a26;
+  --green-primary: #00ff88;
+  --green-dim: #00cc6a;
+  --green-glow: rgba(0, 255, 136, 0.15);
+  --red-alert: #ff4444;
+  --orange-warn: #ff8844;
+  --yellow-med: #ffcc00;
+  --text-primary: #e8e8f0;
+  --text-secondary: #8888a0;
+  --text-dim: #555566;
+  --border: #2a2a3a;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Outfit', sans-serif;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+/* Grain overlay */
+body::after {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Navigation */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  padding: 1.2rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(10, 10, 15, 0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
+}
+
+.nav-logo {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 1.2rem;
+  color: var(--green-primary);
+  text-decoration: none;
+  letter-spacing: -0.5px;
+}
+
+.nav-logo span { color: var(--text-primary); }
+
+.nav-links { display: flex; gap: 2rem; align-items: center; }
+
+.nav-links a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 400;
+  transition: color 0.2s;
+}
+
+.nav-links a:hover { color: var(--text-primary); }
+
+.nav-cta {
+  background: var(--green-primary) !important;
+  color: var(--bg-deep) !important;
+  padding: 0.5rem 1.2rem;
+  border-radius: 6px;
+  font-weight: 600 !important;
+  font-size: 0.85rem !important;
+  transition: opacity 0.2s !important;
+}
+
+.nav-cta:hover { opacity: 0.85; }
+
+/* Hero */
+.hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 8rem 2rem 4rem;
+  position: relative;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -200px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 800px;
+  height: 800px;
+  background: radial-gradient(circle, rgba(0, 255, 136, 0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 50px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+  animation: fadeInUp 0.8s ease;
+}
+
+.hero-badge .dot {
+  width: 6px; height: 6px;
+  background: var(--green-primary);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.hero h1 {
+  font-size: clamp(2.8rem, 7vw, 5.5rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -2px;
+  margin-bottom: 1.5rem;
+  animation: fadeInUp 0.8s ease 0.1s both;
+}
+
+.hero h1 .highlight {
+  color: var(--green-primary);
+  position: relative;
+}
+
+.hero-sub {
+  font-size: clamp(1.05rem, 2vw, 1.25rem);
+  color: var(--text-secondary);
+  max-width: 600px;
+  line-height: 1.7;
+  font-weight: 300;
+  margin-bottom: 2.5rem;
+  animation: fadeInUp 0.8s ease 0.2s both;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 1rem;
+  animation: fadeInUp 0.8s ease 0.3s both;
+}
+
+.btn-primary {
+  background: var(--green-primary);
+  color: var(--bg-deep);
+  padding: 0.85rem 2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: all 0.2s;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  box-shadow: 0 0 30px rgba(0, 255, 136, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-primary);
+  padding: 0.85rem 2rem;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 0.95rem;
+  text-decoration: none;
+  border: 1px solid var(--border);
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  border-color: var(--text-secondary);
+  background: rgba(255,255,255,0.03);
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Terminal demo */
+.terminal-section {
+  padding: 4rem 2rem 6rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.terminal {
+  background: #0d0d14;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+.terminal-header {
+  background: var(--bg-card);
+  padding: 0.8rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.terminal-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+}
+
+.terminal-dot.red { background: #ff5f57; }
+.terminal-dot.yellow { background: #febc2e; }
+.terminal-dot.green { background: #28c840; }
+
+.terminal-title {
+  flex: 1;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.terminal-body {
+  padding: 1.5rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  overflow-x: auto;
+}
+
+.terminal-body .prompt { color: var(--green-primary); }
+.terminal-body .cmd { color: var(--text-primary); }
+.terminal-body .output { color: var(--text-dim); }
+.terminal-body .critical { color: var(--red-alert); }
+.terminal-body .high { color: var(--orange-warn); }
+.terminal-body .medium { color: var(--yellow-med); }
+.terminal-body .success { color: var(--green-primary); }
+
+/* How it works */
+.section {
+  padding: 6rem 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.section-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--green-primary);
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  margin-bottom: 1rem;
+}
+
+.section-title {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -1px;
+  margin-bottom: 1rem;
+}
+
+.section-desc {
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  font-weight: 300;
+  max-width: 650px;
+  margin-bottom: 3rem;
+}
+
+/* Flow diagram */
+.flow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 3rem 0;
+}
+
+.flow-step {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  text-align: center;
+  min-width: 200px;
+  flex: 1;
+  max-width: 250px;
+  transition: border-color 0.3s;
+}
+
+.flow-step:hover { border-color: var(--green-primary); }
+
+.flow-step .icon {
+  font-size: 2rem;
+  margin-bottom: 0.8rem;
+}
+
+.flow-step h3 {
+  font-size: 1rem;
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+}
+
+.flow-step p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 300;
+}
+
+.flow-arrow {
+  color: var(--green-dim);
+  font-size: 1.5rem;
+  font-weight: 300;
+}
+
+/* Four pillars */
+.pillars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.pillar {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2rem 1.5rem;
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+
+.pillar::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--green-primary);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.pillar:hover::before { opacity: 1; }
+.pillar:hover { border-color: rgba(0, 255, 136, 0.3); }
+
+.pillar-icon {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--green-primary);
+  background: var(--green-glow);
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  display: inline-block;
+  margin-bottom: 1rem;
+}
+
+.pillar h3 {
+  font-size: 1.15rem;
+  margin-bottom: 0.6rem;
+  font-weight: 600;
+}
+
+.pillar p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 300;
+  line-height: 1.6;
+}
+
+/* Threat model */
+.threats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+@media (max-width: 700px) { .threats { grid-template-columns: 1fr; } }
+
+.threat-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2rem;
+}
+
+.threat-card h3 {
+  font-size: 1.1rem;
+  margin-bottom: 1.2rem;
+  font-weight: 600;
+}
+
+.threat-card.prevent h3 { color: var(--green-primary); }
+.threat-card.limit h3 { color: var(--text-secondary); }
+
+.threat-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-weight: 300;
+}
+
+.threat-item .icon-check { color: var(--green-primary); font-size: 1rem; flex-shrink: 0; }
+.threat-item .icon-x { color: var(--text-dim); font-size: 1rem; flex-shrink: 0; }
+
+/* Video section */
+.video-section {
+  padding: 4rem 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.video-container {
+  position: relative;
+  padding-bottom: 56.25%;
+  margin-top: 2rem;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+}
+
+.video-container iframe {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  border: none;
+}
+
+.video-placeholder {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.video-placeholder .play-icon {
+  width: 60px; height: 60px;
+  border: 2px solid var(--green-primary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+  color: var(--green-primary);
+  font-size: 1.5rem;
+}
+
+/* CTA */
+.cta-section {
+  padding: 6rem 2rem;
+  text-align: center;
+  position: relative;
+}
+
+.cta-section::before {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 600px; height: 400px;
+  background: radial-gradient(circle, rgba(0, 255, 136, 0.05) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.cta-section h2 {
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  font-weight: 700;
+  letter-spacing: -1px;
+  margin-bottom: 1rem;
+}
+
+.cta-section p {
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  font-weight: 300;
+  margin-bottom: 2rem;
+}
+
+/* Footer */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+footer a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+footer a:hover { color: var(--green-primary); }
+
+/* Built for badge */
+.built-for {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.built-for a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.built-for a:hover { color: var(--green-primary); }
+
+/* Mobile */
+@media (max-width: 768px) {
+  nav { padding: 1rem; }
+  .nav-links { gap: 1rem; }
+  .nav-links a:not(.nav-cta) { display: none; }
+  .hero { padding: 7rem 1.5rem 3rem; }
+  .hero-actions { flex-direction: column; width: 100%; max-width: 300px; }
+  .flow-arrow { display: none; }
+  .section { padding: 4rem 1.5rem; }
+  .terminal-body { font-size: 0.7rem; padding: 1rem; }
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="#" class="nav-logo"><span>Blind</span>Guard</a>
+  <div class="nav-links">
+    <a href="#how">How It Works</a>
+    <a href="#identity">Identity</a>
+    <a href="#threats">Threat Model</a>
+    <a href="https://github.com/proof0S/BlindGuard" class="nav-cta" target="_blank">View on GitHub</a>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-badge">
+    <span class="dot"></span>
+    EigenCloud Open Innovation Challenge
+  </div>
+  <h1>Audit code without<br><span class="highlight">ever seeing it.</span></h1>
+  <p class="hero-sub">
+    BlindGuard is a security agent that runs inside an EigenCompute TEE. 
+    Your source code goes in, a signed vulnerability report comes out. 
+    The code never leaves the enclave.
+  </p>
+  <div class="hero-actions">
+    <a href="https://github.com/proof0S/BlindGuard" class="btn-primary" target="_blank">View Source</a>
+    <a href="#demo" class="btn-secondary">Watch Demo</a>
+  </div>
+  <div class="built-for">
+    Built for the <a href="https://ideas.eigencloud.xyz/" target="_blank">EigenCloud Challenge</a>
+  </div>
+</section>
+
+<!-- Terminal demo -->
+<section class="terminal-section" id="demo">
+  <div class="terminal">
+    <div class="terminal-header">
+      <span class="terminal-dot red"></span>
+      <span class="terminal-dot yellow"></span>
+      <span class="terminal-dot green"></span>
+      <span class="terminal-title">blindguard — demo</span>
+    </div>
+    <div class="terminal-body">
+      <span class="prompt">$</span> <span class="cmd">python3 blindguard_cli.py audit sample_vulnerable_app.py</span><br><br>
+      <span class="output">Loading code from: sample_vulnerable_app.py</span><br>
+      <span class="output">Found 1 file(s) to analyze (93 lines)</span><br><br>
+      <span class="output">Data Commitment: <span class="success">da1523edbfa38656...</span></span><br>
+      <span class="output">Analyzing... completed in 2ms</span><br><br>
+      <span class="critical">CRITICAL  Hardcoded Secret/Credential — Line 13, 14, 15</span><br>
+      <span class="critical">CRITICAL  Command Injection — Line 39, 45</span><br>
+      <span class="high">HIGH      SQL Injection — Line 25</span><br>
+      <span class="high">HIGH      Insecure Deserialization — Line 50, 55</span><br>
+      <span class="high">HIGH      eval/exec Usage — Line 70, 76</span><br>
+      <span class="medium">MEDIUM    Weak Crypto (MD5/SHA1) — Line 60, 65</span><br>
+      <span class="medium">MEDIUM    Debug Mode Enabled — Line 18, 92</span><br><br>
+      <span class="output">Found <strong style="color:var(--text-primary)">17 issues</strong>: 5 critical, 5 high, 7 medium</span><br><br>
+      <span class="output">TEE Signature: <span class="success">7331d4bb8495d1c5...</span></span><br>
+      <span class="success">Attestation: VALID</span><br>
+      <span class="output">Source code was analyzed and NEVER transmitted.</span>
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section class="section" id="how">
+  <span class="section-label">How It Works</span>
+  <h2 class="section-title">Code in. Report out. Nothing else.</h2>
+  <p class="section-desc">
+    The entire analysis happens inside a hardware isolated enclave. 
+    No one, not even BlindGuard's operators, can access your source code.
+  </p>
+  <div class="flow">
+    <div class="flow-step">
+      <div class="icon">📤</div>
+      <h3>Upload</h3>
+      <p>Encrypted source code enters the TEE enclave</p>
+    </div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">
+      <div class="icon">🔍</div>
+      <h3>Analyze</h3>
+      <p>Static analysis + EigenAI LLM inference inside the enclave</p>
+    </div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">
+      <div class="icon">📋</div>
+      <h3>Report</h3>
+      <p>Signed vulnerability report + cryptographic attestation exits</p>
+    </div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">
+      <div class="icon">✅</div>
+      <h3>Verify</h3>
+      <p>Anyone can verify the audit without seeing the code</p>
+    </div>
+  </div>
+</section>
+
+<!-- Identity Pillars -->
+<section class="section" id="identity">
+  <span class="section-label">Agent Identity</span>
+  <h2 class="section-title">Four pillars of trust.</h2>
+  <p class="section-desc">
+    Every BlindGuard audit is fully auditable. The agent's identity is defined by its code, 
+    data commitments, upgrade policy, and persistent state.
+  </p>
+  <div class="pillars">
+    <div class="pillar">
+      <span class="pillar-icon">SHA-256</span>
+      <h3>Code Hash</h3>
+      <p>The Docker image digest is included in every TEE attestation. Anyone can verify the exact code that ran.</p>
+    </div>
+    <div class="pillar">
+      <span class="pillar-icon">COMMIT</span>
+      <h3>Data Commitment</h3>
+      <p>A hash of the input code is computed before analysis. Proves what was analyzed without revealing it.</p>
+    </div>
+    <div class="pillar">
+      <span class="pillar-icon">SEMVER</span>
+      <h3>Upgrade Policy</h3>
+      <p>Manifest enforces semantic versioning. No silent changes. Every upgrade requires a version bump.</p>
+    </div>
+    <div class="pillar">
+      <span class="pillar-icon">STATE</span>
+      <h3>Persisted State</h3>
+      <p>Full audit history in TEE encrypted storage. Every analysis leaves a verifiable trail.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Threat Model -->
+<section class="section" id="threats">
+  <span class="section-label">Threat Model</span>
+  <h2 class="section-title">Honest about what we do and don't prevent.</h2>
+  <div class="threats">
+    <div class="threat-card prevent">
+      <h3>What We Prevent</h3>
+      <div class="threat-item"><span class="icon-check">✓</span> Code theft or leakage by the auditor</div>
+      <div class="threat-item"><span class="icon-check">✓</span> Tampered analysis results</div>
+      <div class="threat-item"><span class="icon-check">✓</span> Silent agent upgrades</div>
+      <div class="threat-item"><span class="icon-check">✓</span> Forged or falsified reports</div>
+      <div class="threat-item"><span class="icon-check">✓</span> Non deterministic results</div>
+    </div>
+    <div class="threat-card limit">
+      <h3>Known Limitations</h3>
+      <div class="threat-item"><span class="icon-x">—</span> TEE hardware side channel attacks</div>
+      <div class="threat-item"><span class="icon-x">—</span> AI hallucinations or missed vulnerabilities</div>
+      <div class="threat-item"><span class="icon-x">—</span> Denial of service on EigenCompute</div>
+      <div class="threat-item"><span class="icon-x">—</span> Code quality beyond security scope</div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <h2>Try it yourself.</h2>
+  <p>Clone the repo, run the CLI, and see BlindGuard in action.</p>
+  <a href="https://github.com/proof0S/BlindGuard" class="btn-primary" target="_blank">View on GitHub</a>
+</section>
+
+<footer>
+  <p>BlindGuard — Built for the <a href="https://ideas.eigencloud.xyz/">EigenCloud Open Innovation Challenge</a></p>
+</footer>
+
+</body>
+</html>
