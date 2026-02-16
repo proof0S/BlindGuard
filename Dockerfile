@@ -13,6 +13,7 @@ COPY crypto.py .
 COPY server.py .
 COPY state.py .
 COPY upgrade.py .
+COPY github_app.py .
 COPY blindguard_cli.py .
 COPY manifest.json .
 COPY sample_vulnerable_app.py .
