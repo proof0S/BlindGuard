@@ -1,4 +1,4 @@
-# BlindGuard — Private Security Agent
+# BlindGuard | Private Security Agent
 
 **Audits your code without ever seeing or stealing it.**
 
