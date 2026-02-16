@@ -6,6 +6,30 @@ BlindGuard is a security agent that runs entirely inside an EigenCompute TEE (Tr
 
 We built this for the [EigenCloud "Build a Verifiable or Sovereign Agent" Challenge](https://ideas.eigencloud.xyz/).
 
+🔗 [Live Website](https://proof0s.github.io/BlindGuard) · 🔒 [TEE Dashboard](https://verify-sepolia.eigencloud.xyz/app/0x9d70dBAb76b6D97Cba8221Bd897d079DFC3f390E) · 📡 Live API: `http://34.187.234.237:8000`
+
+---
+
+## Live on EigenCompute
+
+BlindGuard is deployed and running on EigenCompute Sepolia right now. You can talk to it directly from your terminal.
+
+To check the agent's identity:
+
+```bash
+curl http://34.187.234.237:8000/identity
+```
+
+To run a security audit on some code:
+
+```bash
+curl -X POST http://34.187.234.237:8000/audit \
+  -H "Content-Type: application/json" \
+  -d '{"files": {"app.py": "API_KEY=\"secret123\"\nimport os\nos.system(input())"}}'
+```
+
+You'll get back a full vulnerability report with a cryptographic attestation, proving that this exact agent analyzed this exact code inside the TEE. The verifiable build and deployment can be inspected on the [EigenCloud Dashboard](https://verify-sepolia.eigencloud.xyz/app/0x9d70dBAb76b6D97Cba8221Bd897d079DFC3f390E).
+
 ---
 
 ## The Problem
@@ -20,54 +44,28 @@ BlindGuard flips the model. Instead of sending your code to an auditor, you send
 
 ## Quick Start
 
-### Running the Demo
+### Using the CLI Locally
 
-Clone the repo, enter the directory, and run the demo script:
-
-```bash
-cd blindguard
-chmod +x demo.sh
-bash demo.sh
-```
-
-That's it. The script will audit a sample vulnerable app and walk you through the full flow.
-
-### Using the CLI
-
-You can audit a single file or an entire directory:
+Clone the repo and you're ready to go. No dependencies needed.
 
 ```bash
-python3 blindguard_cli.py audit path/to/code.py
+git clone https://github.com/proof0S/BlindGuard.git
+cd BlindGuard
 ```
 
-If you want the report as a JSON file:
+To check the agent's identity, run `python3 blindguard_cli.py identity`. This shows you the code hash, manifest version, capabilities, and upgrade policy.
 
-```bash
-python3 blindguard_cli.py audit ./my-project -o report.json
-```
+To audit a file, run `python3 blindguard_cli.py audit sample_vulnerable_app.py -o report.json`. This will analyze the sample vulnerable app and save the report as JSON.
 
-To verify an attestation from a previous audit:
+To verify the attestation from that report, run `python3 blindguard_cli.py verify report.json`. And to see the full audit history, run `python3 blindguard_cli.py history`.
 
-```bash
-python3 blindguard_cli.py verify report.json
-```
+### Running the Demo Script
 
-You can also check the agent's identity or browse the audit history:
-
-```bash
-python3 blindguard_cli.py identity
-python3 blindguard_cli.py history
-```
+If you just want to see everything in action, run `chmod +x demo.sh` and then `bash demo.sh`. The script walks through all four commands automatically.
 
 ### Running as an HTTP Server
 
-If you prefer to interact over HTTP:
-
-```bash
-python3 -m agent.server
-```
-
-Then submit code for audit:
+Start the server with `python3 server.py` and then you can submit code for audit over HTTP:
 
 ```bash
 curl -X POST http://localhost:8000/audit \
@@ -75,29 +73,21 @@ curl -X POST http://localhost:8000/audit \
   -d '{"files": {"app.py": "import os\nAPI_KEY=\"secret123\"\nos.system(input())"}}'
 ```
 
-Check the agent's identity with `curl http://localhost:8000/identity` and verify an attestation by posting the report JSON to `/verify`.
+You can also check the agent's identity with `curl http://localhost:8000/identity` and verify an attestation by posting the report JSON to `/verify`.
 
 ### Deploying to EigenCompute TEE
 
-Once you're ready for the real thing:
-
-```bash
-curl -fsSL https://tools.eigencloud.xyz | bash
-eigenx auth generate --store
-eigenx app deploy blindguard:latest
-```
-
-You can monitor your deployment with `eigenx app info blindguard` and `eigenx app logs blindguard`.
+To deploy to a real TEE, first install the EigenCloud CLI with `curl -fsSL https://raw.githubusercontent.com/Layr-Labs/eigencloud-tools/master/install-all.sh | bash`. Then authenticate with `ecloud auth generate --store`, subscribe with `ecloud billing subscribe`, set the network with `ecloud compute env set sepolia`, and deploy with `ecloud compute app deploy`. The CLI will detect the Dockerfile, build the image, and push it to a TEE instance.
 
 ---
 
 ## Architecture
 
-The flow is straightforward. The client (code owner) uploads encrypted source code into the EigenCompute TEE. Inside the enclave, a Code Loader parses and prepares the input, then passes it to the Analyzer, which combines static analysis with EigenAI-powered LLM inference. The Analyzer produces a vulnerability report and a cryptographic attestation. Only the report and attestation leave the TEE. The source code stays inside and is discarded after analysis.
+The flow is straightforward. The client (code owner) uploads source code into the EigenCompute TEE. Inside the enclave, a Code Loader parses and prepares the input, then passes it to the Analyzer, which combines static analysis with EigenAI-powered LLM inference. The Analyzer produces a vulnerability report and a cryptographic attestation. Only the report and attestation leave the TEE. The source code stays inside and is discarded after analysis.
 
 ```
 ┌──────────────┐     encrypted      ┌──────────────────────────────────┐
-│   Client     │ ──────upload─────▶ │      EigenCompute TEE            │
+│   Client     │ ──────upload──────▶ │      EigenCompute TEE            │
 │  (code owner)│                    │                                  │
 │              │                    │  ┌────────────┐  ┌────────────┐  │
 │              │                    │  │ Code Loader │─▶│ Analyzer   │  │
@@ -123,31 +113,6 @@ BlindGuard's identity is defined by four pillars, which together make the agent'
 **Upgrade Policy.** The agent ships with a `manifest.json` that enforces semantic versioning. Upgrades can only happen through a defined process: the manifest version must increment, and upgrades are signed. No silent changes.
 
 **Persisted State.** Every audit is recorded in TEE-encrypted storage. The audit history is queryable, so there's a verifiable trail of every analysis the agent has performed.
-
----
-
-## Repo Structure
-
-```
-blindguard/
-├── agent/                  Core agent logic (runs inside the TEE)
-│   ├── analyzer.py         Security analysis engine (static + EigenAI)
-│   ├── crypto.py           Hashing, commitments, attestation generation
-│   ├── server.py           HTTP server for TEE deployment
-│   ├── state.py            Persisted state and audit history
-│   └── upgrade.py          Upgrade policy enforcement
-├── cli/
-│   └── blindguard_cli.py   Command-line interface
-├── tests/
-│   └── sample_vulnerable_app.py
-├── scripts/
-│   └── demo.sh             Full demo walkthrough
-├── docs/
-│   └── ARCHITECTURE.md     Detailed architecture doc
-├── Dockerfile              EigenCompute-ready container
-├── manifest.json           Agent identity and upgrade policy
-└── README.md
-```
 
 ---
 
