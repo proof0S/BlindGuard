@@ -26,6 +26,12 @@ from crypto import (
 )
 from state import record_audit, get_audit_history, get_stats
 from upgrade import load_manifest, compute_manifest_hash
+from github_app import (
+    handle_push_event,
+    handle_installation_event,
+    verify_webhook_signature,
+    get_installation_token,
+)
 
 
 class BlindGuardHandler(BaseHTTPRequestHandler):
@@ -76,12 +82,14 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length).decode()
+        body = self.rfile.read(content_length)
 
         if self.path == "/audit":
-            self._handle_audit(body)
+            self._handle_audit(body.decode())
         elif self.path == "/verify":
-            self._handle_verify(body)
+            self._handle_verify(body.decode())
+        elif self.path == "/webhook":
+            self._handle_webhook(body)
         else:
             self._send_json({"error": "Not found"}, 404)
 
@@ -102,46 +110,8 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "No files provided. Send {\"files\": {\"path\": \"content\"}}"}, 400)
             return
 
-        use_eigenai = data.get("use_eigenai", True)
-
-        # Step 1: Create commitment to input (proves what was analyzed)
-        commitment = create_data_commitment(code_files)
-
-        # Step 2: Analyze (all inside TEE)
-        report = analyze(code_files, use_eigenai=use_eigenai)
-
-        # Step 3: Create attestation
-        manifest = load_manifest()
-        report_json = report.to_json()
-        attestation = create_attestation(
-            manifest_version=manifest["agent"]["version"],
-            input_commitment=commitment.input_hash,
-            output_content=report_json,
-            eigenai_model=report.eigenai_model,
-            deterministic_seed=report.deterministic_seed,
-        )
-
-        # Step 4: Record in state (only hashes, never code)
-        record_audit(
-            run_id=attestation.run_id,
-            input_commitment=commitment.input_hash,
-            output_hash=attestation.output_hash,
-            findings_count=report.stats["total_findings"],
-            severity_counts=report.stats["by_severity"],
-            attestation_signature=attestation.tee_signature,
-        )
-
-        # Step 5: Return report + attestation (code stays inside TEE)
-        self._send_json({
-            "report": report.to_dict(),
-            "attestation": attestation.to_dict(),
-            "data_commitment": commitment.to_dict(),
-            "verification_note": (
-                "The 'data_commitment' proves which code was analyzed. "
-                "The 'attestation' proves this exact agent produced this exact report. "
-                "The source code NEVER leaves the TEE container."
-            ),
-        })
+        result = self._run_audit(code_files)
+        self._send_json(result)
 
     def _handle_verify(self, body: str):
         """Verify a previously generated attestation."""
@@ -155,6 +125,90 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
         result = verify_attestation(att)
         result["verification"] = "PASS" if result["signature_valid"] else "FAIL"
         self._send_json(result)
+
+    def _handle_webhook(self, body: bytes):
+        """Handle GitHub App webhook events."""
+        # Verify signature if webhook secret is set
+        webhook_secret = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
+        if webhook_secret:
+            signature = self.headers.get("X-Hub-Signature-256", "")
+            if not verify_webhook_signature(body, signature, webhook_secret):
+                self._send_json({"error": "Invalid signature"}, 401)
+                return
+
+        event_type = self.headers.get("X-GitHub-Event", "")
+        try:
+            payload = json.loads(body.decode())
+        except json.JSONDecodeError:
+            self._send_json({"error": "Invalid JSON"}, 400)
+            return
+
+        print(f"[Webhook] Received event: {event_type}")
+
+        if event_type == "push":
+            # Get installation token
+            app_id = os.environ.get("GITHUB_APP_ID", "")
+            private_key = os.environ.get("GITHUB_APP_PRIVATE_KEY", "")
+            installation_id = str(payload.get("installation", {}).get("id", ""))
+
+            if not installation_id:
+                self._send_json({"error": "No installation ID in payload"}, 400)
+                return
+
+            token = get_installation_token(app_id, private_key, installation_id)
+            if not token:
+                # Fallback: try using a personal access token
+                token = os.environ.get("GITHUB_TOKEN", "")
+
+            if not token:
+                self._send_json({"error": "Could not authenticate with GitHub"}, 500)
+                return
+
+            result = handle_push_event(payload, token, self._run_audit)
+            self._send_json(result)
+
+        elif event_type in ("installation", "installation_repositories"):
+            result = handle_installation_event(payload)
+            self._send_json(result)
+
+        elif event_type == "ping":
+            self._send_json({"status": "pong", "agent": "blindguard"})
+
+        else:
+            self._send_json({"status": "ignored", "event": event_type})
+
+    @staticmethod
+    def _run_audit(code_files: dict) -> dict:
+        """Run audit pipeline (used by both /audit endpoint and webhook handler)."""
+        commitment = create_data_commitment(code_files)
+        report = analyze(code_files, use_eigenai=True)
+        manifest = load_manifest()
+        report_json = report.to_json()
+        attestation = create_attestation(
+            manifest_version=manifest["agent"]["version"],
+            input_commitment=commitment.input_hash,
+            output_content=report_json,
+            eigenai_model=report.eigenai_model,
+            deterministic_seed=report.deterministic_seed,
+        )
+        record_audit(
+            run_id=attestation.run_id,
+            input_commitment=commitment.input_hash,
+            output_hash=attestation.output_hash,
+            findings_count=report.stats["total_findings"],
+            severity_counts=report.stats["by_severity"],
+            attestation_signature=attestation.tee_signature,
+        )
+        return {
+            "report": report.to_dict(),
+            "attestation": attestation.to_dict(),
+            "data_commitment": commitment.to_dict(),
+            "verification_note": (
+                "The 'data_commitment' proves which code was analyzed. "
+                "The 'attestation' proves this exact agent produced this exact report. "
+                "The source code NEVER leaves the TEE container."
+            ),
+        }
 
     def log_message(self, format, *args):
         """Suppress default logging for cleaner output."""
@@ -175,6 +229,7 @@ def main():
     print(f"║    GET  /stats       Agent statistics            ║")
     print(f"║    POST /audit       Submit code for analysis    ║")
     print(f"║    POST /verify      Verify an attestation       ║")
+    print(f"║    POST /webhook     GitHub App webhook          ║")
     print(f"╚══════════════════════════════════════════════════╝")
     try:
         server.serve_forever()
