@@ -147,30 +147,25 @@ def get_changed_files(owner: str, repo: str, before: str, after: str, token: str
     return files
 
 
-def create_check_run(owner: str, repo: str, head_sha: str, token: str, status: str, title: str, summary: str, text: str = "", conclusion: str = None):
-    """Create or update a check run on a commit."""
+def create_commit_status(owner: str, repo: str, sha: str, token: str, state: str, description: str, target_url: str = ""):
+    """Create a commit status (works with PAT, shows icon on commit)."""
     data = {
-        "name": "BlindGuard Security Audit",
-        "head_sha": head_sha,
-        "status": status,
-        "output": {
-            "title": title,
-            "summary": summary,
-            "text": text
-        }
+        "state": state,
+        "description": description[:140],
+        "context": "BlindGuard Security Audit"
     }
-
-    if status == "completed" and conclusion:
-        data["conclusion"] = conclusion
-        data["completed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-    data["started_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-    return github_api("POST", f"/repos/{owner}/{repo}/check-runs", token, data)
+    if target_url:
+        data["target_url"] = target_url
+    return github_api("POST", f"/repos/{owner}/{repo}/statuses/{sha}", token, data)
 
 
-def format_check_summary(report: dict, attestation: dict, commitment: dict) -> tuple:
-    """Format audit results for GitHub check run display."""
+def create_commit_comment(owner: str, repo: str, sha: str, token: str, body: str):
+    """Create a comment on a commit."""
+    return github_api("POST", f"/repos/{owner}/{repo}/commits/{sha}/comments", token, {"body": body})
+
+
+def format_audit_comment(report: dict, attestation: dict, commitment: dict) -> tuple:
+    """Format audit results for GitHub commit comment."""
     stats = report["stats"]
     findings = report["findings"]
     by_sev = stats.get("by_severity", {})
@@ -180,51 +175,43 @@ def format_check_summary(report: dict, attestation: dict, commitment: dict) -> t
     medium = by_sev.get("MEDIUM", 0)
     total = stats["total_findings"]
 
-    # Conclusion
     if critical > 0:
-        conclusion = "failure"
+        state = "failure"
     elif high > 0:
-        conclusion = "neutral"
+        state = "failure"
     else:
-        conclusion = "success"
-
-    # Title
-    if total == 0:
-        title = "No security issues found"
-    else:
-        title = f"Found {total} issue(s): {critical} critical, {high} high, {medium} medium"
-
-    # Summary
-    summary = f"BlindGuard analyzed {stats['files_analyzed']} file(s) ({stats['total_lines']} lines) inside the TEE enclave in {report['analysis_duration_ms']}ms.\n\n"
+        state = "success"
 
     if total == 0:
-        summary += "No security vulnerabilities were detected."
+        description = "No security issues found"
     else:
-        summary += f"**{total} security issues found.**\n\n"
+        description = f"Found {total} issue(s): {critical} critical, {high} high, {medium} medium"
 
-    # Detailed text
-    text = ""
-    if findings:
-        text += "## Findings\n\n"
+    body = "## 🛡️ BlindGuard Security Audit\n\n"
+    body += f"Analyzed **{stats['files_analyzed']} file(s)** ({stats['total_lines']} lines) inside the TEE enclave in {report['analysis_duration_ms']}ms.\n\n"
+
+    if total == 0:
+        body += "✅ **No security vulnerabilities detected.**\n\n"
+    else:
+        body += f"**{total} security issue(s) found.**\n\n"
         for f in findings:
             icon = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(f["severity"], "⚪")
-            text += f"{icon} **[{f['severity']}] {f['title']}**\n"
-            text += f"  {f['file_path']} · {f['line_hint']} · {f['cwe_id']}\n"
-            text += f"  💡 {f['recommendation']}\n\n"
+            body += f"{icon} **[{f['severity']}] {f['title']}** — `{f['file_path']}` {f['line_hint']} ({f['cwe_id']})\n"
+            body += f"> 💡 {f['recommendation']}\n\n"
 
-    # Attestation info
-    text += "## TEE Attestation\n\n"
-    text += f"This audit ran inside a Trusted Execution Environment on EigenCompute.\n\n"
-    text += f"| Field | Value |\n|---|---|\n"
-    text += f"| Run ID | `{attestation['run_id']}` |\n"
-    text += f"| Agent Code Hash | `{attestation['agent_code_hash'][:24]}...` |\n"
-    text += f"| Input Commitment | `{attestation['input_commitment'][:24]}...` |\n"
-    text += f"| TEE Signature | `{attestation['tee_signature'][:24]}...` |\n"
-    text += f"| Model | `{attestation['eigenai_model']}` |\n"
-    text += f"| Version | `{attestation['manifest_version']}` |\n\n"
-    text += "The source code was analyzed inside the enclave and never left the TEE."
+    body += "---\n\n"
+    body += "### 🔐 TEE Attestation\n\n"
+    body += "This audit ran inside a Trusted Execution Environment on EigenCompute. The source code never left the enclave.\n\n"
+    body += f"| Field | Value |\n|---|---|\n"
+    body += f"| Run ID | `{attestation['run_id'][:16]}...` |\n"
+    body += f"| Agent Code Hash | `{attestation['agent_code_hash'][:24]}...` |\n"
+    body += f"| Input Commitment | `{attestation['input_commitment'][:24]}...` |\n"
+    body += f"| TEE Signature | `{attestation['tee_signature'][:24]}...` |\n"
+    body += f"| Model | `{attestation['eigenai_model']}` |\n"
+    body += f"| Version | `{attestation['manifest_version']}` |\n\n"
+    body += "*Verified by [BlindGuard](https://proof0s.github.io/BlindGuard) on [EigenCompute TEE](https://verify-sepolia.eigencloud.xyz/app/0x9d70dBAb76b6D97Cba8221Bd897d079DFC3f390E)*"
 
-    return conclusion, title, summary, text
+    return state, description, body
 
 
 def handle_push_event(payload: dict, token: str, audit_fn):
@@ -237,12 +224,11 @@ def handle_push_event(payload: dict, token: str, audit_fn):
 
     print(f"[GitHub App] Push event: {owner}/{repo_name} @ {head_sha[:8]}")
 
-    # Create check run (in progress)
-    create_check_run(
+    # Set pending status
+    create_commit_status(
         owner, repo_name, head_sha, token,
-        status="in_progress",
-        title="BlindGuard is analyzing your code...",
-        summary="Security audit running inside TEE enclave."
+        state="pending",
+        description="BlindGuard is analyzing your code..."
     )
 
     # Get changed Python files
@@ -252,12 +238,10 @@ def handle_push_event(payload: dict, token: str, audit_fn):
         files = get_repo_files(owner, repo_name, head_sha, token)
 
     if not files:
-        create_check_run(
+        create_commit_status(
             owner, repo_name, head_sha, token,
-            status="completed",
-            conclusion="neutral",
-            title="No Python files to analyze",
-            summary="No Python files were found or changed in this push."
+            state="success",
+            description="No Python files to analyze"
         )
         return {"status": "skipped", "reason": "no python files"}
 
@@ -270,20 +254,22 @@ def handle_push_event(payload: dict, token: str, audit_fn):
     attestation = result["attestation"]
     commitment = result["data_commitment"]
 
-    # Format and post results
-    conclusion, title, summary, text = format_check_summary(report, attestation, commitment)
+    # Format results
+    state, description, comment_body = format_audit_comment(report, attestation, commitment)
 
-    create_check_run(
+    # Post commit status (shows icon on commit)
+    create_commit_status(
         owner, repo_name, head_sha, token,
-        status="completed",
-        conclusion=conclusion,
-        title=title,
-        summary=summary,
-        text=text
+        state=state,
+        description=description,
+        target_url="https://proof0s.github.io/BlindGuard"
     )
 
-    print(f"[GitHub App] Audit complete: {title}")
-    return {"status": "completed", "conclusion": conclusion, "title": title}
+    # Post commit comment (shows detailed report)
+    create_commit_comment(owner, repo_name, head_sha, token, comment_body)
+
+    print(f"[GitHub App] Audit complete: {description}")
+    return {"status": "completed", "state": state, "description": description}
 
 
 def handle_installation_event(payload: dict):
