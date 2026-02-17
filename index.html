@@ -372,6 +372,33 @@ nav {
 }
 .sample-btn:hover { border-color: var(--green-primary); color: var(--green-primary); }
 
+.audit-tabs {
+  display: flex;
+  gap: 0;
+  margin-top: 2rem;
+  margin-bottom: -1px;
+  position: relative;
+  z-index: 2;
+}
+.audit-tab {
+  padding: 0.7rem 1.5rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border-radius: 8px 8px 0 0;
+  transition: all 0.2s;
+}
+.audit-tab.active {
+  background: #0d0d14;
+  color: var(--green-primary);
+  border-color: var(--border);
+}
+.audit-tab:hover:not(.active) { color: var(--text-secondary); }
+
 .finding {
   padding: 0.8rem;
   border-radius: 8px;
@@ -577,23 +604,46 @@ footer a:hover { color: var(--green-primary); }
 <section class="audit-section" id="audit">
   <span class="section-label">Live Demo</span>
   <h2 class="section-title">Try it yourself. Right now.</h2>
-  <p class="section-desc">Paste your code below. It gets sent to BlindGuard running inside a real TEE on EigenCompute. The report comes back signed. Your code never leaves the enclave.</p>
+  <p class="section-desc">Paste code or enter a public GitHub repo URL. BlindGuard analyzes everything inside the TEE. The code never leaves the enclave.</p>
   <div class="tee-badge"><span class="live-dot"></span> Connected to TEE at 34.187.234.237</div>
+
+  <div class="audit-tabs">
+    <button class="audit-tab active" onclick="switchTab('code')">Paste Code</button>
+    <button class="audit-tab" onclick="switchTab('repo')">Audit a Repo</button>
+  </div>
+
   <div class="audit-container">
     <div class="audit-input-panel">
       <div class="panel-header">
         <div class="panel-header-left">
           <span class="panel-dot red"></span><span class="panel-dot yellow"></span><span class="panel-dot green"></span>
-          <span class="panel-title">your-code.py</span>
+          <span class="panel-title" id="inputPanelTitle">your-code.py</span>
         </div>
-        <div class="sample-codes">
+        <div class="sample-codes" id="sampleBtns">
           <button class="sample-btn" onclick="loadSample('secrets')">secrets</button>
           <button class="sample-btn" onclick="loadSample('sqli')">sql injection</button>
           <button class="sample-btn" onclick="loadSample('cmdi')">cmd injection</button>
           <button class="sample-btn" onclick="loadSample('full')">full sample</button>
         </div>
       </div>
-      <textarea class="code-input" id="codeInput" placeholder="# Paste your Python code here...&#10;# Or click a sample above to try it out."></textarea>
+
+      <div id="codeTab">
+        <textarea class="code-input" id="codeInput" placeholder="# Paste your Python code here...&#10;# Or click a sample above to try it out."></textarea>
+      </div>
+
+      <div id="repoTab" style="display:none;">
+        <div style="padding: 1.2rem; display: flex; flex-direction: column; gap: 1rem; min-height: 300px; justify-content: center;">
+          <div style="font-size: 0.85rem; color: var(--text-secondary);">Enter a public GitHub repository URL</div>
+          <input type="text" id="repoInput" placeholder="https://github.com/owner/repo" style="width:100%; padding:0.8rem 1rem; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; color:var(--text-primary); font-family:'JetBrains Mono',monospace; font-size:0.85rem; outline:none;" />
+          <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            <button class="sample-btn" onclick="loadRepoSample('proof0S/BlindGuard')">proof0S/BlindGuard</button>
+            <button class="sample-btn" onclick="loadRepoSample('pallets/flask')">pallets/flask</button>
+            <button class="sample-btn" onclick="loadRepoSample('psf/requests')">psf/requests</button>
+          </div>
+          <div style="font-size: 0.7rem; color: var(--text-dim);">Only public repos. We fetch Python files, analyze them inside the TEE, and return the report. The code never leaves the enclave.</div>
+        </div>
+      </div>
+
       <div class="audit-btn-container">
         <button class="audit-btn" id="auditBtn" onclick="runAudit()">
           <span class="spinner" id="spinner"></span>
@@ -611,7 +661,7 @@ footer a:hover { color: var(--green-primary); }
       <div class="output-body" id="outputBody">
         <div class="output-placeholder">
           <div class="shield">🛡️</div>
-          <div>Paste code and click "Run Audit"</div>
+          <div>Paste code or enter a repo URL</div>
           <div style="font-size: 0.7rem; margin-top: 0.3rem;">Analysis happens inside the TEE enclave</div>
         </div>
       </div>
@@ -706,8 +756,35 @@ const samples = {
 };
 
 function loadSample(name) { document.getElementById('codeInput').value = samples[name]; }
+function loadRepoSample(repo) { document.getElementById('repoInput').value = 'https://github.com/' + repo; }
+
+let currentTab = 'code';
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.audit-tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+
+  if (tab === 'code') {
+    document.getElementById('codeTab').style.display = 'block';
+    document.getElementById('repoTab').style.display = 'none';
+    document.getElementById('inputPanelTitle').textContent = 'your-code.py';
+    document.getElementById('sampleBtns').style.display = 'flex';
+    document.getElementById('btnText').textContent = 'Run Audit in TEE';
+  } else {
+    document.getElementById('codeTab').style.display = 'none';
+    document.getElementById('repoTab').style.display = 'block';
+    document.getElementById('inputPanelTitle').textContent = 'github-repo';
+    document.getElementById('sampleBtns').style.display = 'none';
+    document.getElementById('btnText').textContent = 'Audit Repo in TEE';
+  }
+}
 
 async function runAudit() {
+  if (currentTab === 'repo') {
+    return runRepoAudit();
+  }
+
   const code = document.getElementById('codeInput').value.trim();
   if (!code) { alert('Please paste some code first.'); return; }
 
@@ -744,6 +821,54 @@ async function runAudit() {
   }
 }
 
+async function runRepoAudit() {
+  const repoUrl = document.getElementById('repoInput').value.trim();
+  if (!repoUrl) { alert('Please enter a GitHub repo URL.'); return; }
+
+  const btn = document.getElementById('auditBtn');
+  const spinner = document.getElementById('spinner');
+  const btnText = document.getElementById('btnText');
+  const output = document.getElementById('outputBody');
+
+  btn.disabled = true;
+  spinner.style.display = 'block';
+  btnText.textContent = 'Fetching repo...';
+  output.innerHTML = '<div class="output-placeholder"><div class="shield" style="animation: pulse 1s infinite;">🔍</div><div>Fetching files from GitHub and analyzing inside TEE...</div><div style="font-size:0.7rem;margin-top:0.3rem;">This may take a few seconds for larger repos</div></div>';
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    const response = await fetch(API_URL + '/audit-repo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo_url: repoUrl }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    const data = await response.json();
+    if (data.error) {
+      output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">' + data.error + '</div></div>';
+    } else {
+      renderReport(data, true);
+    }
+  } catch (err) {
+    // Fallback: parse owner/repo and do local simulation
+    const match = repoUrl.match(/(?:https?:\/\/github\.com\/)?([^\/]+)\/([^\/]+)/);
+    if (match) {
+      const fakeFiles = { 'app.py': '# Could not reach TEE, showing demo\nAPI_KEY = "demo"\nimport os\nos.system("ls")' };
+      const data = runLocalAnalysis(fakeFiles['app.py']);
+      data.repo = match[1] + '/' + match[2];
+      renderReport(data, false);
+    } else {
+      output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">Could not connect to TEE</div><div style="font-size:0.7rem;margin-top:0.3rem;">' + err.message + '</div></div>';
+    }
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+    btnText.textContent = 'Audit Repo in TEE';
+  }
+}
+
 function renderReport(data, isLive) {
   const output = document.getElementById('outputBody');
   const report = data.report;
@@ -755,6 +880,10 @@ function renderReport(data, isLive) {
     html += '<div style="margin-bottom:1rem;padding:0.6rem 0.8rem;background:rgba(255,204,0,0.08);border:1px solid rgba(255,204,0,0.2);border-radius:6px;font-size:0.75rem;color:var(--yellow-med)">⚡ Demo mode — showing simulated analysis. For live TEE audit, clone the repo and run locally or use: <span style="font-family:JetBrains Mono,monospace;font-size:0.7rem">curl -X POST http://34.187.234.237:8000/audit</span></div>';
   } else {
     html += '<div style="margin-bottom:1rem;padding:0.6rem 0.8rem;background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);border-radius:6px;font-size:0.75rem;color:var(--green-primary)">🔒 Live TEE response — this analysis ran inside the EigenCompute enclave</div>';
+  }
+
+  if (data.repo) {
+    html += '<div style="margin-bottom:1rem;padding:0.6rem 0.8rem;background:var(--bg-card);border-radius:6px;font-size:0.8rem;color:var(--text-primary)">📂 <strong>' + data.repo + '</strong> — ' + (data.files_fetched || report.stats.files_analyzed) + ' file(s) analyzed</div>';
   }
 
   const stats = report.stats;
