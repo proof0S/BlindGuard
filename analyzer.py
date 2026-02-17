@@ -68,6 +68,7 @@ VULN_PATTERNS = {
         "patterns": [
             r"""(?i)(api[_-]?key|secret|password|token|private[_-]?key)\s*[=:]\s*['\"][^'\"]{8,}['\"]""",
             r"""(?i)(aws_access_key_id|aws_secret_access_key)\s*[=:]\s*['\"][^'\"]+['\"]""",
+            r"""(?i)(PRIVATE_KEY|MNEMONIC|SEED_PHRASE)\s*[=:]\s*['\"][^'\"]+['\"]""",
         ],
         "severity": Severity.CRITICAL,
         "title": "Hardcoded Secret/Credential",
@@ -78,6 +79,7 @@ VULN_PATTERNS = {
         "patterns": [
             r"""(?i)(execute|cursor\.execute|raw\s*\()\s*.*(%s|format|f['\"]).*""",
             r"""(?i)query\s*=\s*f?['\"].*\{.*\}.*['\"]""",
+            r"""(?i)query\s*[=+].*\+.*req\.|query\s*[=+].*\+.*request\.""",
         ],
         "severity": Severity.HIGH,
         "title": "Potential SQL Injection",
@@ -88,16 +90,20 @@ VULN_PATTERNS = {
         "patterns": [
             r"""(?i)(os\.system|subprocess\.call|subprocess\.Popen|os\.popen)\s*\(.*\+.*\)""",
             r"""(?i)(os\.system|subprocess\.call)\s*\(.*f['\"]""",
+            r"""(?i)child_process\.(exec|spawn)\s*\(.*\+""",
+            r"""(?i)child_process\.(exec|spawn)\s*\(.*\$\{""",
         ],
         "severity": Severity.CRITICAL,
         "title": "Potential Command Injection",
         "cwe": "CWE-78",
-        "recommendation": "Use subprocess with shell=False and list arguments.",
+        "recommendation": "Use subprocess with shell=False and list arguments. In JS, avoid child_process.exec with user input.",
     },
     "INSECURE_DESERIALIZATION": {
         "patterns": [
             r"""(?i)pickle\.loads?\(""",
             r"""(?i)yaml\.load\s*\((?!.*Loader\s*=\s*yaml\.SafeLoader)""",
+            r"""(?i)JSON\.parse\s*\(\s*req\.""",
+            r"""(?i)unserialize\s*\(""",
         ],
         "severity": Severity.HIGH,
         "title": "Insecure Deserialization",
@@ -108,6 +114,9 @@ VULN_PATTERNS = {
         "patterns": [
             r"""(?i)\beval\s*\(""",
             r"""(?i)\bexec\s*\(""",
+            r"""(?i)new\s+Function\s*\(""",
+            r"""(?i)setTimeout\s*\(\s*['\"]""",
+            r"""(?i)setInterval\s*\(\s*['\"]""",
         ],
         "severity": Severity.HIGH,
         "title": "Use of eval/exec",
@@ -118,6 +127,8 @@ VULN_PATTERNS = {
         "patterns": [
             r"""(?i)(md5|sha1)\s*\(""",
             r"""(?i)hashlib\.(md5|sha1)\s*\(""",
+            r"""(?i)createHash\s*\(\s*['\"]md5['\"]""",
+            r"""(?i)createHash\s*\(\s*['\"]sha1['\"]""",
         ],
         "severity": Severity.MEDIUM,
         "title": "Weak Cryptographic Hash",
@@ -128,20 +139,96 @@ VULN_PATTERNS = {
         "patterns": [
             r"""(?i)DEBUG\s*=\s*True""",
             r"""(?i)app\.run\s*\(.*debug\s*=\s*True""",
+            r"""(?i)console\.log\s*\(.*password|console\.log\s*\(.*secret|console\.log\s*\(.*token""",
         ],
         "severity": Severity.MEDIUM,
         "title": "Debug Mode Enabled",
         "cwe": "CWE-489",
-        "recommendation": "Disable debug mode in production.",
+        "recommendation": "Disable debug mode in production. Remove sensitive data from logs.",
     },
     "OPEN_REDIRECT": {
         "patterns": [
             r"""(?i)redirect\s*\(\s*request\.(args|form|params)""",
+            r"""(?i)res\.redirect\s*\(\s*req\.(query|body|params)""",
+            r"""(?i)window\.location\s*=\s*.*\burl\b""",
         ],
         "severity": Severity.MEDIUM,
         "title": "Potential Open Redirect",
         "cwe": "CWE-601",
         "recommendation": "Validate redirect URLs against an allowlist.",
+    },
+    "XSS": {
+        "patterns": [
+            r"""(?i)innerHTML\s*=\s*.*req\.|innerHTML\s*=\s*.*request\.""",
+            r"""(?i)document\.write\s*\(""",
+            r"""(?i)\.html\s*\(\s*req\.|\.html\s*\(\s*request\.""",
+            r"""(?i)dangerouslySetInnerHTML""",
+            r"""(?i)v-html\s*=""",
+        ],
+        "severity": Severity.HIGH,
+        "title": "Potential Cross-Site Scripting (XSS)",
+        "cwe": "CWE-79",
+        "recommendation": "Sanitize user input before rendering. Use textContent instead of innerHTML.",
+    },
+    "PATH_TRAVERSAL": {
+        "patterns": [
+            r"""(?i)(open|readFile|readFileSync|createReadStream)\s*\(.*\+.*req\.""",
+            r"""(?i)(open|readFile|readFileSync|createReadStream)\s*\(.*\$\{.*req\.""",
+            r"""(?i)\.\.\/|\.\.\\""",
+        ],
+        "severity": Severity.HIGH,
+        "title": "Potential Path Traversal",
+        "cwe": "CWE-22",
+        "recommendation": "Validate and sanitize file paths. Use path.resolve and check against a base directory.",
+    },
+    "HARDCODED_IP_URL": {
+        "patterns": [
+            r"""(?i)(https?://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})""",
+            r"""(?i)(https?://localhost)""",
+        ],
+        "severity": Severity.LOW,
+        "title": "Hardcoded IP/URL",
+        "cwe": "CWE-547",
+        "recommendation": "Use configuration files or environment variables for URLs and IPs.",
+    },
+    "REENTRANCY": {
+        "patterns": [
+            r"""(?i)\.call\{value:""",
+            r"""(?i)\.call\.value\(""",
+            r"""(?i)\.send\(|\.transfer\(""",
+        ],
+        "severity": Severity.CRITICAL,
+        "title": "Potential Reentrancy Vulnerability",
+        "cwe": "CWE-841",
+        "recommendation": "Use checks-effects-interactions pattern. Consider using ReentrancyGuard.",
+    },
+    "UNCHECKED_RETURN": {
+        "patterns": [
+            r"""(?i)\.call\(.*\)\s*;(?!\s*require)""",
+            r"""(?i)\.send\(.*\)\s*;(?!\s*(require|if))""",
+        ],
+        "severity": Severity.HIGH,
+        "title": "Unchecked Return Value",
+        "cwe": "CWE-252",
+        "recommendation": "Always check return values of external calls. Use require() in Solidity.",
+    },
+    "TX_ORIGIN": {
+        "patterns": [
+            r"""(?i)tx\.origin""",
+        ],
+        "severity": Severity.HIGH,
+        "title": "Use of tx.origin for Authorization",
+        "cwe": "CWE-284",
+        "recommendation": "Use msg.sender instead of tx.origin for authorization checks.",
+    },
+    "UNSAFE_REGEX": {
+        "patterns": [
+            r"""(?i)new\s+RegExp\s*\(\s*(req\.|request\.|user)""",
+        ],
+        "severity": Severity.MEDIUM,
+        "title": "Unsafe Regular Expression",
+        "cwe": "CWE-1333",
+        "recommendation": "Avoid constructing regex from user input. Can cause ReDoS attacks.",
     },
 }
 
