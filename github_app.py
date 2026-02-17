@@ -97,7 +97,7 @@ def get_repo_files(owner: str, repo: str, ref: str, token: str) -> dict:
     if "tree" not in tree_data:
         return files
 
-    SUPPORTED_EXTENSIONS = (".py", ".js", ".ts", ".jsx", ".tsx", ".sol", ".rs", ".go", ".rb", ".php", ".java", ".cs", ".c", ".cpp", ".h")
+    SUPPORTED_EXTENSIONS = (".py", ".js", ".ts", ".jsx", ".tsx", ".sol", ".vy", ".rs", ".cairo", ".move", ".go", ".rb", ".php", ".java", ".cs", ".c", ".cpp", ".h")
 
     for item in tree_data["tree"]:
         if item["type"] != "blob":
@@ -131,7 +131,7 @@ def get_changed_files(owner: str, repo: str, before: str, after: str, token: str
 
     for f in compare_data["files"]:
         path = f["filename"]
-        SUPPORTED_EXTENSIONS = (".py", ".js", ".ts", ".jsx", ".tsx", ".sol", ".rs", ".go", ".rb", ".php", ".java", ".cs", ".c", ".cpp", ".h")
+        SUPPORTED_EXTENSIONS = (".py", ".js", ".ts", ".jsx", ".tsx", ".sol", ".vy", ".rs", ".cairo", ".move", ".go", ".rb", ".php", ".java", ".cs", ".c", ".cpp", ".h")
         if not any(path.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
             continue
         if f["status"] == "removed":
