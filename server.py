@@ -213,7 +213,7 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
             return
 
         # Collect source code files
-        SUPPORTED_EXTENSIONS = (".py", ".js", ".ts", ".jsx", ".tsx", ".sol", ".rs", ".go", ".rb", ".php", ".java", ".cs", ".c", ".cpp", ".h")
+        SUPPORTED_EXTENSIONS = (".py", ".js", ".ts", ".jsx", ".tsx", ".sol", ".vy", ".rs", ".cairo", ".move", ".go", ".rb", ".php", ".java", ".cs", ".c", ".cpp", ".h")
         files = {}
         for item in tree_data["tree"]:
             if item["type"] != "blob":
