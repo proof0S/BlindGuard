@@ -556,6 +556,7 @@ footer a:hover { color: var(--green-primary); }
   <div class="nav-links">
     <a href="#audit">Try It</a>
     <a href="#how">How It Works</a>
+    <a href="#github">GitHub App</a>
     <a href="#identity">Identity</a>
     <a href="https://verify-sepolia.eigencloud.xyz/app/0x9d70dBAb76b6D97Cba8221Bd897d079DFC3f390E" target="_blank">TEE Dashboard</a>
     <a href="https://github.com/proof0S/BlindGuard" class="nav-cta" target="_blank">GitHub</a>
@@ -565,10 +566,10 @@ footer a:hover { color: var(--green-primary); }
 <section class="hero">
   <div class="hero-badge"><span class="dot"></span> Live on EigenCompute TEE</div>
   <h1>Audit code without<br><span class="highlight">ever seeing it.</span></h1>
-  <p class="hero-sub">BlindGuard is a security agent that runs inside an EigenCompute TEE. Your source code goes in, a signed vulnerability report comes out. The code never leaves the enclave.<br><br>No one reads your code. Not us, not the auditor, not the server. We prove it's secure without ever looking at it.</p>
+  <p class="hero-sub">BlindGuard is a security agent that runs inside an EigenCompute TEE. Your source code goes in, a signed vulnerability report comes out. The code never leaves the enclave.<br><br>Install it on your repo. Every commit, every release gets audited automatically. You get the guarantee that the code being operated is safe — without anyone ever reading it.</p>
   <div class="hero-actions">
     <a href="#audit" class="btn-primary">Try Live Audit</a>
-    <a href="https://github.com/proof0S/BlindGuard" class="btn-secondary" target="_blank">View Source</a>
+    <a href="https://github.com/apps/blindguard-security" class="btn-secondary" target="_blank">Install GitHub App</a>
   </div>
   <div class="built-for">Built for the <a href="https://ideas.eigencloud.xyz/" target="_blank">EigenCloud Open Innovation Challenge</a></div>
 </section>
@@ -630,6 +631,24 @@ footer a:hover { color: var(--green-primary); }
     <div class="flow-step"><div class="icon">📋</div><h3>Report</h3><p>Signed vulnerability report + cryptographic attestation exits</p></div>
     <span class="flow-arrow">→</span>
     <div class="flow-step"><div class="icon">✅</div><h3>Verify</h3><p>Anyone can verify the audit without seeing the code</p></div>
+  </div>
+</section>
+
+<section class="section" id="github">
+  <span class="section-label">GitHub Integration</span>
+  <h2 class="section-title">Install once. Every commit is safe.</h2>
+  <p class="section-desc">BlindGuard ships as a GitHub App. Install it on any repo — public or private. Every push and every release triggers a full security audit inside the TEE. Results show up directly on your commits.</p>
+  <div class="flow">
+    <div class="flow-step"><div class="icon">⚙️</div><h3>Install</h3><p>Add BlindGuard to your repo with one click</p></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step"><div class="icon">📦</div><h3>Push</h3><p>Every commit and release triggers an audit automatically</p></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step"><div class="icon">🔒</div><h3>Audit</h3><p>Code is analyzed inside the TEE, no one sees it</p></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step"><div class="icon">✅</div><h3>Report</h3><p>Signed attestation posted as a commit comment</p></div>
+  </div>
+  <div style="text-align: center; margin-top: 2rem;">
+    <a href="https://github.com/apps/blindguard-security" class="btn-primary" target="_blank">Install on Your Repo</a>
   </div>
 </section>
 
