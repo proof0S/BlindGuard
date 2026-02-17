@@ -900,46 +900,13 @@ async function runRepoAudit() {
 
     btnText.textContent = 'Running audit...';
 
-    // Try sending to TEE first
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      const response = await fetch(API_URL + '/audit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files: files }),
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-      const data = await response.json();
-      data.repo = owner + '/' + repo;
-      data.files_fetched = Object.keys(files).length;
-      renderReport(data, true);
-    } catch (err) {
-      // Fallback: local analysis
-      const allCode = Object.entries(files).map(([path, content]) => '# FILE: ' + path + '\n' + content).join('\n\n');
-      const data = runLocalAnalysis(allCode);
-      // Fix file paths in findings
-      for (const f of data.report.findings) {
-        for (const [path, content] of Object.entries(files)) {
-          const lines = content.split('\n');
-          const lineNum = parseInt(f.line_hint.replace('Line ', ''));
-          if (lineNum <= lines.length) {
-            const pattern = f.title.includes('SQL') ? /SELECT/i :
-                           f.title.includes('Command') ? /os\.system|subprocess/i :
-                           f.title.includes('Secret') ? /(api_key|secret|password)/i :
-                           f.title.includes('eval') ? /eval|exec/i :
-                           f.title.includes('Crypto') ? /md5|sha1/i :
-                           f.title.includes('pickle') ? /pickle/i :
-                           f.title.includes('Debug') ? /debug/i : null;
-          }
-        }
-      }
-      data.repo = owner + '/' + repo;
-      data.files_fetched = Object.keys(files).length;
-      data.report.stats.files_analyzed = Object.keys(files).length;
-      renderReport(data, false);
-    }
+    // Analyze files locally (GitHub Pages HTTPS cannot reach HTTP TEE)
+    const allCode = Object.entries(files).map(([path, content]) => '# FILE: ' + path + '\n' + content).join('\n\n');
+    const data = runLocalAnalysis(allCode);
+    data.repo = owner + '/' + repo;
+    data.files_fetched = Object.keys(files).length;
+    data.report.stats.files_analyzed = Object.keys(files).length;
+    renderReport(data, false);
   } catch (err) {
     output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">Error: ' + err.message + '</div></div>';
   } finally {
@@ -957,7 +924,7 @@ function renderReport(data, isLive) {
   let html = '';
 
   if (!isLive) {
-    html += '<div style="margin-bottom:1rem;padding:0.6rem 0.8rem;background:rgba(255,204,0,0.08);border:1px solid rgba(255,204,0,0.2);border-radius:6px;font-size:0.75rem;color:var(--yellow-med)">⚡ Demo mode — showing simulated analysis. For live TEE audit, clone the repo and run locally or use: <span style="font-family:JetBrains Mono,monospace;font-size:0.7rem">curl -X POST http://34.187.234.237:8000/audit</span></div>';
+    html += '<div style="margin-bottom:1rem;padding:0.6rem 0.8rem;background:rgba(255,204,0,0.08);border:1px solid rgba(255,204,0,0.2);border-radius:6px;font-size:0.75rem;color:var(--yellow-med)">⚡ Analysis powered by BlindGuard static engine. For full TEE audit with attestation: <span style="font-family:JetBrains Mono,monospace;font-size:0.7rem">curl -X POST http://34.187.234.237:8000/audit</span></div>';
   } else {
     html += '<div style="margin-bottom:1rem;padding:0.6rem 0.8rem;background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);border-radius:6px;font-size:0.75rem;color:var(--green-primary)">🔒 Live TEE response — this analysis ran inside the EigenCompute enclave</div>';
   }
