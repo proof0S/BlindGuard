@@ -861,19 +861,17 @@ async function runRepoAudit() {
       var treeData = await treeResp.json();
     }
 
-    // Filter Python files
+    // Filter source code files
+    const supportedExts = ['.py', '.js', '.ts', '.jsx', '.tsx', '.sol', '.rs', '.go', '.rb', '.php', '.java', '.cs', '.c', '.cpp', '.h'];
+    const skipDirs = ['venv/', 'node_modules/', '__pycache__/', 'test_', '/tests/', 'dist/', 'build/', '.min.', 'vendor/', 'migrations/'];
     const pyFiles = (treeData.tree || []).filter(f =>
       f.type === 'blob' &&
-      f.path.endsWith('.py') &&
-      !f.path.includes('venv/') &&
-      !f.path.includes('node_modules/') &&
-      !f.path.includes('__pycache__/') &&
-      !f.path.includes('test_') &&
-      !f.path.includes('/tests/')
+      supportedExts.some(ext => f.path.endsWith(ext)) &&
+      !skipDirs.some(skip => f.path.includes(skip))
     ).slice(0, 15);
 
     if (pyFiles.length === 0) {
-      output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--yellow-med);">No Python files found in ' + owner + '/' + repo + '</div></div>';
+      output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--yellow-med);">No source code files found in ' + owner + '/' + repo + '</div></div>';
       return;
     }
 
@@ -984,13 +982,16 @@ function runLocalAnalysis(code) {
   let id = 1;
 
   const patterns = [
-    { regex: /(api_key|secret|password|token|aws_secret)\s*=\s*["'][^"']+["']/gi, title: 'Hardcoded Secret/Credential', severity: 'CRITICAL', cwe: 'CWE-798', rec: 'Use environment variables or a secrets manager.' },
-    { regex: /["']SELECT\s.*(%s|%d|\{|' \+|' \.).*["']/gi, title: 'Potential SQL Injection', severity: 'HIGH', cwe: 'CWE-89', rec: 'Use parameterized queries instead of string formatting.' },
-    { regex: /os\.system\s*\(|subprocess\.call\s*\(.*shell\s*=\s*True/gi, title: 'Potential Command Injection', severity: 'CRITICAL', cwe: 'CWE-78', rec: 'Use subprocess with shell=False and list arguments.' },
-    { regex: /pickle\.loads?\s*\(/gi, title: 'Insecure Deserialization', severity: 'HIGH', cwe: 'CWE-502', rec: 'Avoid pickle on untrusted data. Use safe alternatives.' },
-    { regex: /\beval\s*\(|\bexec\s*\(/gi, title: 'Use of eval/exec', severity: 'HIGH', cwe: 'CWE-95', rec: 'Avoid eval/exec on user-controllable input.' },
-    { regex: /hashlib\.(md5|sha1)\s*\(/gi, title: 'Weak Cryptographic Hash', severity: 'MEDIUM', cwe: 'CWE-328', rec: 'Use SHA-256 or stronger hashing algorithms.' },
-    { regex: /debug\s*=\s*True/gi, title: 'Debug Mode Enabled', severity: 'MEDIUM', cwe: 'CWE-489', rec: 'Disable debug mode in production.' }
+    { regex: /(api_key|secret|password|token|private_key|mnemonic|seed_phrase)\s*[=:]\s*["'"][^"'"]{8,}["'"]/gi, title: 'Hardcoded Secret/Credential', severity: 'CRITICAL', cwe: 'CWE-798', rec: 'Use environment variables or a secrets manager.' },
+    { regex: /["'"]SELECT\s.*(%s|%d|\{|' \+|' \.).*["'"]/gi, title: 'Potential SQL Injection', severity: 'HIGH', cwe: 'CWE-89', rec: 'Use parameterized queries instead of string formatting.' },
+    { regex: /os\.system\s*\(|subprocess\.call\s*\(.*shell\s*=\s*True|child_process\.(exec|spawn)\s*\(.*\+/gi, title: 'Potential Command Injection', severity: 'CRITICAL', cwe: 'CWE-78', rec: 'Use subprocess with shell=False. In JS, avoid child_process.exec with user input.' },
+    { regex: /pickle\.loads?\s*\(|unserialize\s*\(/gi, title: 'Insecure Deserialization', severity: 'HIGH', cwe: 'CWE-502', rec: 'Avoid pickle on untrusted data. Use safe alternatives.' },
+    { regex: /\beval\s*\(|\bexec\s*\(|new\s+Function\s*\(/gi, title: 'Use of eval/exec', severity: 'HIGH', cwe: 'CWE-95', rec: 'Avoid eval/exec on user-controllable input.' },
+    { regex: /hashlib\.(md5|sha1)\s*\(|createHash\s*\(\s*['"]md5['"]\)|createHash\s*\(\s*['"]sha1['"]\)/gi, title: 'Weak Cryptographic Hash', severity: 'MEDIUM', cwe: 'CWE-328', rec: 'Use SHA-256 or stronger hashing algorithms.' },
+    { regex: /debug\s*=\s*True|console\.log\s*\(.*(?:password|secret|token)/gi, title: 'Debug Mode / Sensitive Logging', severity: 'MEDIUM', cwe: 'CWE-489', rec: 'Disable debug mode in production. Remove sensitive data from logs.' },
+    { regex: /innerHTML\s*=|document\.write\s*\(|dangerouslySetInnerHTML|v-html\s*=/gi, title: 'Potential Cross-Site Scripting (XSS)', severity: 'HIGH', cwe: 'CWE-79', rec: 'Sanitize user input. Use textContent instead of innerHTML.' },
+    { regex: /tx\.origin/gi, title: 'Use of tx.origin for Authorization', severity: 'HIGH', cwe: 'CWE-284', rec: 'Use msg.sender instead of tx.origin.' },
+    { regex: /\.call\{value:|\.call\.value\(/gi, title: 'Potential Reentrancy', severity: 'CRITICAL', cwe: 'CWE-841', rec: 'Use checks-effects-interactions pattern. Use ReentrancyGuard.' }
   ];
 
   let currentFile = 'submitted-code.py';
