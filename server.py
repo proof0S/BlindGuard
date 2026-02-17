@@ -28,6 +28,7 @@ from state import record_audit, get_audit_history, get_stats
 from upgrade import load_manifest, compute_manifest_hash
 from github_app import (
     handle_push_event,
+    handle_release_event,
     handle_installation_event,
     verify_webhook_signature,
     get_installation_token,
@@ -165,6 +166,15 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
                 return
 
             result = handle_push_event(payload, token, self._run_audit)
+            self._send_json(result)
+
+        elif event_type == "release":
+            token = os.environ.get("GITHUB_TOKEN", "")
+            if not token:
+                self._send_json({"error": "Could not authenticate with GitHub"}, 500)
+                return
+
+            result = handle_release_event(payload, token, self._run_audit)
             self._send_json(result)
 
         elif event_type in ("installation", "installation_repositories"):
