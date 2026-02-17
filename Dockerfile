@@ -17,6 +17,7 @@ COPY github_app.py .
 COPY blindguard_cli.py .
 COPY manifest.json .
 COPY sample_vulnerable_app.py .
+COPY index.html .
 
 RUN mkdir -p /data/blindguard-state
 ENV BLINDGUARD_STATE_DIR=/data/blindguard-state
