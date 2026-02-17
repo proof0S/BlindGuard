@@ -825,12 +825,6 @@ async function runRepoAudit() {
   const repoUrl = document.getElementById('repoInput').value.trim();
   if (!repoUrl) { alert('Please enter a GitHub repo URL.'); return; }
 
-  const match = repoUrl.match(/(?:https?:\/\/github\.com\/)?([^\/]+)\/([^\/\s]+)/);
-  if (!match) { alert('Invalid GitHub repo URL.'); return; }
-
-  const owner = match[1];
-  const repo = match[2].replace(/\.git$/, '');
-
   const btn = document.getElementById('auditBtn');
   const spinner = document.getElementById('spinner');
   const btnText = document.getElementById('btnText');
@@ -839,77 +833,22 @@ async function runRepoAudit() {
   btn.disabled = true;
   spinner.style.display = 'block';
   btnText.textContent = 'Fetching repo...';
-  output.innerHTML = '<div class="output-placeholder"><div class="shield" style="animation: pulse 1s infinite;">🔍</div><div>Fetching files from GitHub...</div><div style="font-size:0.7rem;margin-top:0.3rem;">Analyzing inside TEE enclave</div></div>';
+  output.innerHTML = '<div class="output-placeholder"><div class="shield" style="animation: pulse 1s infinite;">🔍</div><div>Fetching files and analyzing inside TEE...</div><div style="font-size:0.7rem;margin-top:0.3rem;">This may take a few seconds</div></div>';
 
   try {
-    // Fetch repo tree from GitHub API (HTTPS, no mixed content issue)
-    const treeResp = await fetch('https://api.github.com/repos/' + owner + '/' + repo + '/git/trees/main?recursive=1', {
-      headers: { 'Accept': 'application/vnd.github+json' }
-    });
-
-    if (!treeResp.ok) {
-      // Try master branch
-      const treeResp2 = await fetch('https://api.github.com/repos/' + owner + '/' + repo + '/git/trees/master?recursive=1', {
-        headers: { 'Accept': 'application/vnd.github+json' }
-      });
-      if (!treeResp2.ok) {
-        output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">Repository not found or is private</div></div>';
-        return;
-      }
-      var treeData = await treeResp2.json();
-    } else {
-      var treeData = await treeResp.json();
-    }
-
-    // Filter source code files
-    const supportedExts = ['.py', '.js', '.ts', '.jsx', '.tsx', '.sol', '.rs', '.go', '.rb', '.php', '.java', '.cs', '.c', '.cpp', '.h'];
-    const skipDirs = ['venv/', 'node_modules/', '__pycache__/', 'test_', '/tests/', 'dist/', 'build/', '.min.', 'vendor/', 'migrations/'];
-    const pyFiles = (treeData.tree || []).filter(f =>
-      f.type === 'blob' &&
-      supportedExts.some(ext => f.path.endsWith(ext)) &&
-      !skipDirs.some(skip => f.path.includes(skip))
-    ).slice(0, 15);
-
-    if (pyFiles.length === 0) {
-      output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--yellow-med);">No source code files found in ' + owner + '/' + repo + '</div></div>';
-      return;
-    }
-
-    btnText.textContent = 'Analyzing ' + pyFiles.length + ' file(s)...';
-
-    // Fetch each file content
-    const files = {};
-    for (const f of pyFiles) {
-      try {
-        const blobResp = await fetch('https://api.github.com/repos/' + owner + '/' + repo + '/git/blobs/' + f.sha, {
-          headers: { 'Accept': 'application/vnd.github+json' }
-        });
-        const blobData = await blobResp.json();
-        if (blobData.content) {
-          files[f.path] = atob(blobData.content.replace(/\n/g, ''));
-        }
-      } catch (e) {}
-    }
-
-    if (Object.keys(files).length === 0) {
-      output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">Could not fetch file contents</div></div>';
-      return;
-    }
-
-    btnText.textContent = 'Running audit...';
-
-    // Send files to TEE for analysis (same origin, no mixed content)
-    const response = await fetch(API_URL + '/audit', {
+    const response = await fetch(API_URL + '/audit-repo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: files })
+      body: JSON.stringify({ repo_url: repoUrl })
     });
     const data = await response.json();
-    data.repo = owner + '/' + repo;
-    data.files_fetched = Object.keys(files).length;
-    renderReport(data, true);
+    if (data.error) {
+      output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">' + data.error + '</div></div>';
+    } else {
+      renderReport(data, true);
+    }
   } catch (err) {
-    output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">Error: ' + err.message + '</div></div>';
+    output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">Could not connect to TEE: ' + err.message + '</div></div>';
   } finally {
     btn.disabled = false;
     spinner.style.display = 'none';
