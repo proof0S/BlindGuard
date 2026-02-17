@@ -825,6 +825,12 @@ async function runRepoAudit() {
   const repoUrl = document.getElementById('repoInput').value.trim();
   if (!repoUrl) { alert('Please enter a GitHub repo URL.'); return; }
 
+  const match = repoUrl.match(/(?:https?:\/\/github\.com\/)?([^\/]+)\/([^\/\s]+)/);
+  if (!match) { alert('Invalid GitHub repo URL.'); return; }
+
+  const owner = match[1];
+  const repo = match[2].replace(/\.git$/, '');
+
   const btn = document.getElementById('auditBtn');
   const spinner = document.getElementById('spinner');
   const btnText = document.getElementById('btnText');
@@ -833,35 +839,109 @@ async function runRepoAudit() {
   btn.disabled = true;
   spinner.style.display = 'block';
   btnText.textContent = 'Fetching repo...';
-  output.innerHTML = '<div class="output-placeholder"><div class="shield" style="animation: pulse 1s infinite;">🔍</div><div>Fetching files from GitHub and analyzing inside TEE...</div><div style="font-size:0.7rem;margin-top:0.3rem;">This may take a few seconds for larger repos</div></div>';
+  output.innerHTML = '<div class="output-placeholder"><div class="shield" style="animation: pulse 1s infinite;">🔍</div><div>Fetching files from GitHub...</div><div style="font-size:0.7rem;margin-top:0.3rem;">Analyzing inside TEE enclave</div></div>';
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
-    const response = await fetch(API_URL + '/audit-repo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ repo_url: repoUrl }),
-      signal: controller.signal
+    // Fetch repo tree from GitHub API (HTTPS, no mixed content issue)
+    const treeResp = await fetch('https://api.github.com/repos/' + owner + '/' + repo + '/git/trees/main?recursive=1', {
+      headers: { 'Accept': 'application/vnd.github+json' }
     });
-    clearTimeout(timeout);
-    const data = await response.json();
-    if (data.error) {
-      output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">' + data.error + '</div></div>';
+
+    if (!treeResp.ok) {
+      // Try master branch
+      const treeResp2 = await fetch('https://api.github.com/repos/' + owner + '/' + repo + '/git/trees/master?recursive=1', {
+        headers: { 'Accept': 'application/vnd.github+json' }
+      });
+      if (!treeResp2.ok) {
+        output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">Repository not found or is private</div></div>';
+        return;
+      }
+      var treeData = await treeResp2.json();
     } else {
+      var treeData = await treeResp.json();
+    }
+
+    // Filter Python files
+    const pyFiles = (treeData.tree || []).filter(f =>
+      f.type === 'blob' &&
+      f.path.endsWith('.py') &&
+      !f.path.includes('venv/') &&
+      !f.path.includes('node_modules/') &&
+      !f.path.includes('__pycache__/') &&
+      !f.path.includes('test_') &&
+      !f.path.includes('/tests/')
+    ).slice(0, 15);
+
+    if (pyFiles.length === 0) {
+      output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--yellow-med);">No Python files found in ' + owner + '/' + repo + '</div></div>';
+      return;
+    }
+
+    btnText.textContent = 'Analyzing ' + pyFiles.length + ' file(s)...';
+
+    // Fetch each file content
+    const files = {};
+    for (const f of pyFiles) {
+      try {
+        const blobResp = await fetch('https://api.github.com/repos/' + owner + '/' + repo + '/git/blobs/' + f.sha, {
+          headers: { 'Accept': 'application/vnd.github+json' }
+        });
+        const blobData = await blobResp.json();
+        if (blobData.content) {
+          files[f.path] = atob(blobData.content.replace(/\n/g, ''));
+        }
+      } catch (e) {}
+    }
+
+    if (Object.keys(files).length === 0) {
+      output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">Could not fetch file contents</div></div>';
+      return;
+    }
+
+    btnText.textContent = 'Running audit...';
+
+    // Try sending to TEE first
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(API_URL + '/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: files }),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      const data = await response.json();
+      data.repo = owner + '/' + repo;
+      data.files_fetched = Object.keys(files).length;
       renderReport(data, true);
+    } catch (err) {
+      // Fallback: local analysis
+      const allCode = Object.entries(files).map(([path, content]) => '# FILE: ' + path + '\n' + content).join('\n\n');
+      const data = runLocalAnalysis(allCode);
+      // Fix file paths in findings
+      for (const f of data.report.findings) {
+        for (const [path, content] of Object.entries(files)) {
+          const lines = content.split('\n');
+          const lineNum = parseInt(f.line_hint.replace('Line ', ''));
+          if (lineNum <= lines.length) {
+            const pattern = f.title.includes('SQL') ? /SELECT/i :
+                           f.title.includes('Command') ? /os\.system|subprocess/i :
+                           f.title.includes('Secret') ? /(api_key|secret|password)/i :
+                           f.title.includes('eval') ? /eval|exec/i :
+                           f.title.includes('Crypto') ? /md5|sha1/i :
+                           f.title.includes('pickle') ? /pickle/i :
+                           f.title.includes('Debug') ? /debug/i : null;
+          }
+        }
+      }
+      data.repo = owner + '/' + repo;
+      data.files_fetched = Object.keys(files).length;
+      data.report.stats.files_analyzed = Object.keys(files).length;
+      renderReport(data, false);
     }
   } catch (err) {
-    // Fallback: parse owner/repo and do local simulation
-    const match = repoUrl.match(/(?:https?:\/\/github\.com\/)?([^\/]+)\/([^\/]+)/);
-    if (match) {
-      const fakeFiles = { 'app.py': '# Could not reach TEE, showing demo\nAPI_KEY = "demo"\nimport os\nos.system("ls")' };
-      const data = runLocalAnalysis(fakeFiles['app.py']);
-      data.repo = match[1] + '/' + match[2];
-      renderReport(data, false);
-    } else {
-      output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">Could not connect to TEE</div><div style="font-size:0.7rem;margin-top:0.3rem;">' + err.message + '</div></div>';
-    }
+    output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">Error: ' + err.message + '</div></div>';
   } finally {
     btn.disabled = false;
     spinner.style.display = 'none';
@@ -943,7 +1023,18 @@ function runLocalAnalysis(code) {
     { regex: /debug\s*=\s*True/gi, title: 'Debug Mode Enabled', severity: 'MEDIUM', cwe: 'CWE-489', rec: 'Disable debug mode in production.' }
   ];
 
+  let currentFile = 'submitted-code.py';
+  let fileLineOffset = 0;
+
   lines.forEach((line, i) => {
+    // Track current file from # FILE: markers
+    const fileMatch = line.match(/^# FILE: (.+)$/);
+    if (fileMatch) {
+      currentFile = fileMatch[1];
+      fileLineOffset = i + 1;
+      return;
+    }
+
     patterns.forEach(p => {
       const matches = line.match(p.regex);
       if (matches) {
@@ -953,8 +1044,8 @@ function runLocalAnalysis(code) {
             title: p.title,
             severity: p.severity,
             description: 'Pattern match detected.',
-            file_path: 'submitted-code.py',
-            line_hint: 'Line ' + (i + 1),
+            file_path: currentFile,
+            line_hint: 'Line ' + (i + 1 - fileLineOffset),
             recommendation: p.rec,
             cwe_id: p.cwe
           });
