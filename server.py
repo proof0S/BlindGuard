@@ -160,10 +160,11 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
 
         print(f"[Audit Repo] Fetching {owner}/{repo} @ {branch}")
 
-        # Fetch Python files from public repo (no token needed)
         import urllib.request
         import urllib.error
         import base64
+
+        github_token = os.environ.get("GITHUB_TOKEN", "")
 
         try:
             # Get tree
@@ -171,6 +172,8 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
             req = urllib.request.Request(tree_url)
             req.add_header("Accept", "application/vnd.github+json")
             req.add_header("User-Agent", "BlindGuard-TEE")
+            if github_token:
+                req.add_header("Authorization", f"token {github_token}")
             with urllib.request.urlopen(req, timeout=15) as resp:
                 tree_data = json.loads(resp.read().decode())
         except urllib.error.HTTPError as e:
@@ -204,6 +207,8 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
                 req = urllib.request.Request(blob_url)
                 req.add_header("Accept", "application/vnd.github+json")
                 req.add_header("User-Agent", "BlindGuard-TEE")
+                if github_token:
+                    req.add_header("Authorization", f"token {github_token}")
                 with urllib.request.urlopen(req, timeout=10) as resp:
                     blob_data = json.loads(resp.read().decode())
                 if "content" in blob_data:
