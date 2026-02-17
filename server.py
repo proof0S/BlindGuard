@@ -87,6 +87,8 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
 
         if self.path == "/audit":
             self._handle_audit(body.decode())
+        elif self.path == "/audit-repo":
+            self._handle_audit_repo(body.decode())
         elif self.path == "/verify":
             self._handle_verify(body.decode())
         elif self.path == "/webhook":
@@ -112,6 +114,102 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
             return
 
         result = self._run_audit(code_files)
+        self._send_json(result)
+
+    def _handle_audit_repo(self, body: str):
+        """
+        Audit a public GitHub repo by URL.
+        Input: JSON with "repo_url" (e.g. "https://github.com/user/repo")
+        """
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self._send_json({"error": "Invalid JSON"}, 400)
+            return
+
+        repo_url = data.get("repo_url", "").strip().rstrip("/")
+        if not repo_url:
+            self._send_json({"error": "No repo_url provided"}, 400)
+            return
+
+        # Parse owner/repo from URL
+        # Supports: https://github.com/owner/repo or owner/repo
+        import re
+        match = re.match(r"(?:https?://github\.com/)?([^/]+)/([^/]+)", repo_url)
+        if not match:
+            self._send_json({"error": "Invalid GitHub repo URL"}, 400)
+            return
+
+        owner, repo = match.group(1), match.group(2)
+        branch = data.get("branch", "main")
+
+        print(f"[Audit Repo] Fetching {owner}/{repo} @ {branch}")
+
+        # Fetch Python files from public repo (no token needed)
+        import urllib.request
+        import urllib.error
+        import base64
+
+        try:
+            # Get tree
+            tree_url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
+            req = urllib.request.Request(tree_url)
+            req.add_header("Accept", "application/vnd.github+json")
+            req.add_header("User-Agent", "BlindGuard-TEE")
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                tree_data = json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                self._send_json({"error": f"Repository {owner}/{repo} not found or is private"}, 404)
+            else:
+                self._send_json({"error": f"GitHub API error: {e.code}"}, 500)
+            return
+        except Exception as e:
+            self._send_json({"error": f"Could not reach GitHub: {str(e)}"}, 500)
+            return
+
+        if "tree" not in tree_data:
+            self._send_json({"error": "Could not read repo tree"}, 500)
+            return
+
+        # Collect Python files
+        files = {}
+        for item in tree_data["tree"]:
+            if item["type"] != "blob":
+                continue
+            path = item["path"]
+            if not path.endswith(".py"):
+                continue
+            if any(skip in path for skip in ["venv/", "node_modules/", ".git/", "__pycache__/", "test_", "tests/", "setup.py"]):
+                continue
+
+            try:
+                blob_url = f"https://api.github.com/repos/{owner}/{repo}/git/blobs/{item['sha']}"
+                req = urllib.request.Request(blob_url)
+                req.add_header("Accept", "application/vnd.github+json")
+                req.add_header("User-Agent", "BlindGuard-TEE")
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    blob_data = json.loads(resp.read().decode())
+                if "content" in blob_data:
+                    content = base64.b64decode(blob_data["content"]).decode("utf-8", errors="replace")
+                    files[path] = content
+            except Exception:
+                pass
+
+            # Limit to 20 files max
+            if len(files) >= 20:
+                break
+
+        if not files:
+            self._send_json({"error": f"No Python files found in {owner}/{repo}"}, 404)
+            return
+
+        print(f"[Audit Repo] Analyzing {len(files)} file(s) from {owner}/{repo}")
+
+        result = self._run_audit(files)
+        result["repo"] = f"{owner}/{repo}"
+        result["branch"] = branch
+        result["files_fetched"] = len(files)
         self._send_json(result)
 
     def _handle_verify(self, body: str):
