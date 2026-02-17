@@ -97,15 +97,15 @@ def get_repo_files(owner: str, repo: str, ref: str, token: str) -> dict:
     if "tree" not in tree_data:
         return files
 
+    SUPPORTED_EXTENSIONS = (".py", ".js", ".ts", ".jsx", ".tsx", ".sol", ".rs", ".go", ".rb", ".php", ".java", ".cs", ".c", ".cpp", ".h")
+
     for item in tree_data["tree"]:
         if item["type"] != "blob":
             continue
         path = item["path"]
-        # Only analyze Python files
-        if not path.endswith(".py"):
+        if not any(path.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
             continue
-        # Skip test files, venvs, etc.
-        if any(skip in path for skip in ["venv/", "node_modules/", ".git/", "__pycache__/", "test_", "tests/"]):
+        if any(skip in path for skip in ["venv/", "node_modules/", ".git/", "__pycache__/", "test_", "tests/", "dist/", "build/", ".min.", "vendor/", "migrations/"]):
             continue
         # Fetch file content
         blob_data = github_api("GET", f"/repos/{owner}/{repo}/git/blobs/{item['sha']}", token)
@@ -131,7 +131,8 @@ def get_changed_files(owner: str, repo: str, before: str, after: str, token: str
 
     for f in compare_data["files"]:
         path = f["filename"]
-        if not path.endswith(".py"):
+        SUPPORTED_EXTENSIONS = (".py", ".js", ".ts", ".jsx", ".tsx", ".sol", ".rs", ".go", ".rb", ".php", ".java", ".cs", ".c", ".cpp", ".h")
+        if not any(path.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
             continue
         if f["status"] == "removed":
             continue
