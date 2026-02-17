@@ -187,15 +187,16 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "Could not read repo tree"}, 500)
             return
 
-        # Collect Python files
+        # Collect source code files
+        SUPPORTED_EXTENSIONS = (".py", ".js", ".ts", ".jsx", ".tsx", ".sol", ".rs", ".go", ".rb", ".php", ".java", ".cs", ".c", ".cpp", ".h")
         files = {}
         for item in tree_data["tree"]:
             if item["type"] != "blob":
                 continue
             path = item["path"]
-            if not path.endswith(".py"):
+            if not any(path.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
                 continue
-            if any(skip in path for skip in ["venv/", "node_modules/", ".git/", "__pycache__/", "test_", "tests/", "setup.py"]):
+            if any(skip in path for skip in ["venv/", "node_modules/", ".git/", "__pycache__/", "test_", "tests/", "setup.py", "dist/", "build/", ".min.", "vendor/", "migrations/"]):
                 continue
 
             try:
@@ -216,7 +217,7 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
                 break
 
         if not files:
-            self._send_json({"error": f"No Python files found in {owner}/{repo}"}, 404)
+            self._send_json({"error": f"No source code files found in {owner}/{repo}"}, 404)
             return
 
         print(f"[Audit Repo] Analyzing {len(files)} file(s) from {owner}/{repo}")
