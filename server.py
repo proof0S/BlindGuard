@@ -156,9 +156,9 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
             return
 
         owner, repo = match.group(1), match.group(2)
-        branch = data.get("branch", "main")
+        branch = data.get("branch", "")
 
-        print(f"[Audit Repo] Fetching {owner}/{repo} @ {branch}")
+        print(f"[Audit Repo] Fetching {owner}/{repo}")
 
         import urllib.request
         import urllib.error
@@ -166,25 +166,47 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
 
         github_token = os.environ.get("GITHUB_TOKEN", "")
 
-        try:
-            # Get tree
-            tree_url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
-            req = urllib.request.Request(tree_url)
+        def gh_request(url):
+            req = urllib.request.Request(url)
             req.add_header("Accept", "application/vnd.github+json")
             req.add_header("User-Agent", "BlindGuard-TEE")
             if github_token:
                 req.add_header("Authorization", f"token {github_token}")
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                tree_data = json.loads(resp.read().decode())
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                self._send_json({"error": f"Repository {owner}/{repo} not found or is private"}, 404)
-            else:
-                self._send_json({"error": f"GitHub API error: {e.code}"}, 500)
+            return req
+
+        # If no branch specified, try to get default branch from repo info
+        if not branch:
+            branches_to_try = []
+            try:
+                repo_url_api = f"https://api.github.com/repos/{owner}/{repo}"
+                with urllib.request.urlopen(gh_request(repo_url_api), timeout=10) as resp:
+                    repo_info = json.loads(resp.read().decode())
+                    default_branch = repo_info.get("default_branch", "main")
+                    branches_to_try = [default_branch]
+            except Exception:
+                branches_to_try = ["main", "master"]
+        else:
+            branches_to_try = [branch]
+
+        tree_data = None
+        used_branch = None
+        for b in branches_to_try:
+            try:
+                tree_url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{b}?recursive=1"
+                with urllib.request.urlopen(gh_request(tree_url), timeout=15) as resp:
+                    tree_data = json.loads(resp.read().decode())
+                    used_branch = b
+                    break
+            except urllib.error.HTTPError:
+                continue
+            except Exception:
+                continue
+
+        if not tree_data:
+            self._send_json({"error": f"Repository {owner}/{repo} not found or is private"}, 404)
             return
-        except Exception as e:
-            self._send_json({"error": f"Could not reach GitHub: {str(e)}"}, 500)
-            return
+
+        print(f"[Audit Repo] Using branch: {used_branch}")
 
         if "tree" not in tree_data:
             self._send_json({"error": "Could not read repo tree"}, 500)
@@ -204,12 +226,7 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
 
             try:
                 blob_url = f"https://api.github.com/repos/{owner}/{repo}/git/blobs/{item['sha']}"
-                req = urllib.request.Request(blob_url)
-                req.add_header("Accept", "application/vnd.github+json")
-                req.add_header("User-Agent", "BlindGuard-TEE")
-                if github_token:
-                    req.add_header("Authorization", f"token {github_token}")
-                with urllib.request.urlopen(req, timeout=10) as resp:
+                with urllib.request.urlopen(gh_request(blob_url), timeout=10) as resp:
                     blob_data = json.loads(resp.read().decode())
                 if "content" in blob_data:
                     content = base64.b64decode(blob_data["content"]).decode("utf-8", errors="replace")
@@ -229,7 +246,7 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
 
         result = self._run_audit(files)
         result["repo"] = f"{owner}/{repo}"
-        result["branch"] = branch
+        result["branch"] = used_branch
         result["files_fetched"] = len(files)
         self._send_json(result)
 
