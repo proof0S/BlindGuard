@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BlindGuard — Private Security Agent</title>
+<title>BlindGuard · Private Security Agent</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -566,7 +566,7 @@ footer a:hover { color: var(--green-primary); }
 <section class="hero">
   <div class="hero-badge"><span class="dot"></span> Live on EigenCompute TEE</div>
   <h1>Audit code without<br><span class="highlight">ever seeing it.</span></h1>
-  <p class="hero-sub">BlindGuard is a security agent that runs inside an EigenCompute TEE. Your source code goes in, a signed vulnerability report comes out. The code never leaves the enclave.<br><br>Install it on your repo. Every commit, every release gets audited automatically. You get the guarantee that the code being operated is safe — without anyone ever reading it.</p>
+  <p class="hero-sub">BlindGuard is a security agent that runs inside an EigenCompute TEE. Your source code goes in, a signed vulnerability report comes out. The code never leaves the enclave.<br><br>Install it on your repo. Every commit, every release gets audited automatically. You get the guarantee that the code being operated is safe, without anyone ever reading it.</p>
   <div class="hero-actions">
     <a href="#audit" class="btn-primary">Try Live Audit</a>
     <a href="https://github.com/apps/blindguard-security" class="btn-secondary" target="_blank">Install GitHub App</a>
@@ -637,7 +637,7 @@ footer a:hover { color: var(--green-primary); }
 <section class="section" id="github">
   <span class="section-label">GitHub Integration</span>
   <h2 class="section-title">Install once. Every commit is safe.</h2>
-  <p class="section-desc">BlindGuard ships as a GitHub App. Install it on any repo — public or private. Every push and every release triggers a full security audit inside the TEE. Results show up directly on your commits.</p>
+  <p class="section-desc">BlindGuard ships as a GitHub App. Install it on any repo, public or private. Every push and every release triggers a full security audit inside the TEE. Results show up directly on your commits.</p>
   <div class="flow">
     <div class="flow-step"><div class="icon">⚙️</div><h3>Install</h3><p>Add BlindGuard to your repo with one click</p></div>
     <span class="flow-arrow">→</span>
@@ -693,13 +693,13 @@ footer a:hover { color: var(--green-primary); }
   <div style="margin-top: 1rem;"><a href="https://github.com/proof0S/BlindGuard" class="btn-secondary" target="_blank">View on GitHub</a></div>
 </section>
 
-<footer><p>BlindGuard — Built for the <a href="https://ideas.eigencloud.xyz/">EigenCloud Open Innovation Challenge</a></p></footer>
+<footer><p>BlindGuard · Built for the <a href="https://ideas.eigencloud.xyz/">EigenCloud Open Innovation Challenge</a></p></footer>
 
 <script>
 const API_URL = 'http://34.187.234.237:8000';
 
 const samples = {
-  secrets: `# Hardcoded credentials — never do this\nAPI_KEY = "sk-live-abc123secret456"\nDB_PASSWORD = "admin123"\nAWS_SECRET = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"\n\ndef connect():\n    return db.connect(password=DB_PASSWORD)`,
+  secrets: `# Hardcoded credentials, never do this\nAPI_KEY = "sk-live-abc123secret456"\nDB_PASSWORD = "admin123"\nAWS_SECRET = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"\n\ndef connect():\n    return db.connect(password=DB_PASSWORD)`,
   sqli: `# SQL Injection vulnerability\nimport sqlite3\n\ndef get_user(username):\n    conn = sqlite3.connect('users.db')\n    query = "SELECT * FROM users WHERE name = '%s'" % username\n    return conn.execute(query).fetchone()\n\ndef search(term):\n    query = f"SELECT * FROM products WHERE name LIKE '%{term}%'"\n    return db.execute(query)`,
   cmdi: `# Command Injection vulnerability\nimport os\nimport subprocess\n\ndef ping_host(host):\n    os.system("ping -c 1 " + host)\n\ndef list_files(directory):\n    result = subprocess.call("ls -la " + directory, shell=True)\n    return result\n\ndef process(user_input):\n    eval(user_input)`,
   full: `# === VULNERABLE SAMPLE APPLICATION ===\n# This file intentionally contains security issues\n\n# CRITICAL: Hardcoded secrets\nAPI_KEY = "sk-live-abc123secret456"\nDB_PASSWORD = "admin123"\nAWS_SECRET = "wJalrXUtnFEMI/K7MDENG"\nDEBUG = True\n\n# HIGH: SQL Injection\nimport sqlite3\ndef get_user(username):\n    query = "SELECT * FROM users WHERE name = '%s'" % username\n    return db.execute(query)\n\n# HIGH: Command Injection\nimport os\ndef ping(host):\n    os.system("ping -c 1 " + host)\n\n# HIGH: Insecure Deserialization\nimport pickle\ndef load_data(data):\n    return pickle.loads(data)\n\n# MEDIUM: Weak Crypto\nimport hashlib\ndef hash_password(pw):\n    return hashlib.md5(pw.encode()).hexdigest()\n\n# HIGH: eval usage\ndef calculate(expr):\n    return eval(expr)\n\nif __name__ == "__main__":\n    app.run(debug=True)`
