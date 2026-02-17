@@ -286,6 +286,89 @@ def handle_installation_event(payload: dict):
     return {"status": "ok", "action": action}
 
 
+def handle_release_event(payload: dict, token: str, audit_fn):
+    """Handle a GitHub release event. Audits the full repo at the release tag."""
+    action = payload.get("action")
+    if action not in ("published", "created"):
+        return {"status": "ignored", "reason": f"release action '{action}' skipped"}
+
+    repo = payload["repository"]
+    owner = repo["owner"]["login"] if isinstance(repo["owner"], dict) else repo["owner"]
+    repo_name = repo["name"]
+    release = payload["release"]
+    tag = release["tag_name"]
+    release_name = release.get("name", tag)
+    target = release.get("target_commitish", "main")
+
+    print(f"[GitHub App] Release event: {owner}/{repo_name} @ {tag}")
+
+    # Get the commit SHA for this release
+    ref_data = github_api("GET", f"/repos/{owner}/{repo_name}/git/ref/tags/{tag}", token)
+    if "object" in ref_data:
+        head_sha = ref_data["object"]["sha"]
+        # If it's an annotated tag, resolve to the commit
+        if ref_data["object"]["type"] == "tag":
+            tag_data = github_api("GET", f"/repos/{owner}/{repo_name}/git/tags/{head_sha}", token)
+            head_sha = tag_data.get("object", {}).get("sha", head_sha)
+    else:
+        # Fallback to branch
+        branch_data = github_api("GET", f"/repos/{owner}/{repo_name}/git/ref/heads/{target}", token)
+        head_sha = branch_data.get("object", {}).get("sha", "")
+
+    if not head_sha:
+        return {"status": "error", "reason": "could not resolve release commit"}
+
+    # Set pending status
+    create_commit_status(
+        owner, repo_name, head_sha, token,
+        state="pending",
+        description=f"BlindGuard is auditing release {tag}..."
+    )
+
+    # Get ALL Python files at this release (full audit for releases)
+    files = get_repo_files(owner, repo_name, head_sha, token)
+
+    if not files:
+        create_commit_status(
+            owner, repo_name, head_sha, token,
+            state="success",
+            description="No Python files to analyze"
+        )
+        return {"status": "skipped", "reason": "no python files"}
+
+    print(f"[GitHub App] Full release audit: {len(files)} file(s) @ {tag}")
+
+    # Run audit
+    result = audit_fn(files)
+
+    report = result["report"]
+    attestation = result["attestation"]
+    commitment = result["data_commitment"]
+
+    # Format results
+    state, description, comment_body = format_audit_comment(report, attestation, commitment)
+
+    # Add release info to the comment
+    release_header = f"## 🚀 Release Audit: `{tag}`\n\n"
+    release_header += f"Full security audit triggered by release **{release_name}**. "
+    release_header += f"All Python files in the repository were analyzed.\n\n---\n\n"
+    comment_body = release_header + comment_body
+
+    # Post commit status
+    create_commit_status(
+        owner, repo_name, head_sha, token,
+        state=state,
+        description=f"Release {tag}: {description}",
+        target_url="https://proof0s.github.io/BlindGuard"
+    )
+
+    # Post commit comment
+    create_commit_comment(owner, repo_name, head_sha, token, comment_body)
+
+    print(f"[GitHub App] Release audit complete: {tag} — {description}")
+    return {"status": "completed", "release": tag, "state": state, "description": description}
+
+
 def verify_webhook_signature(payload_body: bytes, signature: str, secret: str) -> bool:
     """Verify the webhook signature from GitHub."""
     if not signature or not signature.startswith("sha256="):
