@@ -47,15 +47,30 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(data, indent=2).encode())
 
+    def _send_html(self, html: str, status: int = 200):
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(html.encode())
+
     def do_OPTIONS(self):
         self._send_json({})
 
     def do_GET(self):
-        if self.path == "/" or self.path == "/health":
+        if self.path == "/app" or self.path == "/app/":
+            # Serve the landing page from TEE
+            html_path = os.path.join(os.path.dirname(__file__), "index.html")
+            if os.path.exists(html_path):
+                with open(html_path, "r") as f:
+                    self._send_html(f.read())
+            else:
+                self._send_html("<h1>BlindGuard</h1><p>index.html not found in TEE</p>", 404)
+
+        elif self.path == "/" or self.path == "/health":
             self._send_json({
                 "agent": "blindguard",
                 "status": "running",
-                "description": "Private Security Agent — audits code without seeing or stealing it",
+                "description": "Private Security Agent, audits code without seeing or stealing it",
             })
 
         elif self.path == "/identity":
