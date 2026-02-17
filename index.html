@@ -746,7 +746,7 @@ footer a:hover { color: var(--green-primary); }
 <footer><p>BlindGuard · Built for the <a href="https://ideas.eigencloud.xyz/">EigenCloud Open Innovation Challenge</a></p></footer>
 
 <script>
-const API_URL = 'http://34.187.234.237:8000';
+const API_URL = window.location.origin;
 
 const samples = {
   secrets: `# Hardcoded credentials, never do this\nAPI_KEY = "sk-live-abc123secret456"\nDB_PASSWORD = "admin123"\nAWS_SECRET = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"\n\ndef connect():\n    return db.connect(password=DB_PASSWORD)`,
@@ -900,13 +900,16 @@ async function runRepoAudit() {
 
     btnText.textContent = 'Running audit...';
 
-    // Analyze files locally (GitHub Pages HTTPS cannot reach HTTP TEE)
-    const allCode = Object.entries(files).map(([path, content]) => '# FILE: ' + path + '\n' + content).join('\n\n');
-    const data = runLocalAnalysis(allCode);
+    // Send files to TEE for analysis (same origin, no mixed content)
+    const response = await fetch(API_URL + '/audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: files })
+    });
+    const data = await response.json();
     data.repo = owner + '/' + repo;
     data.files_fetched = Object.keys(files).length;
-    data.report.stats.files_analyzed = Object.keys(files).length;
-    renderReport(data, false);
+    renderReport(data, true);
   } catch (err) {
     output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">Error: ' + err.message + '</div></div>';
   } finally {
