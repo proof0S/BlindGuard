@@ -288,13 +288,10 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
             private_key = os.environ.get("GITHUB_APP_PRIVATE_KEY", "")
             installation_id = str(payload.get("installation", {}).get("id", ""))
 
-            if not installation_id:
-                self._send_json({"error": "No installation ID in payload"}, 400)
-                return
-
-            token = get_installation_token(app_id, private_key, installation_id)
+            token = None
+            if installation_id and private_key:
+                token = get_installation_token(app_id, private_key, installation_id)
             if not token:
-                # Fallback: try using a personal access token
                 token = os.environ.get("GITHUB_TOKEN", "")
 
             if not token:
