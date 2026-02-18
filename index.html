@@ -880,14 +880,14 @@ function renderReport(data, isLive) {
   if (bySev.CRITICAL) html += '<div class="summary-stat"><div class="num" style="color:var(--red-alert)">' + bySev.CRITICAL + '</div>critical</div>';
   if (bySev.HIGH) html += '<div class="summary-stat"><div class="num" style="color:var(--orange-warn)">' + bySev.HIGH + '</div>high</div>';
   if (bySev.MEDIUM) html += '<div class="summary-stat"><div class="num" style="color:var(--yellow-med)">' + bySev.MEDIUM + '</div>medium</div>';
-  html += '<div class="summary-stat"><div class="num">' + report.analysis_duration_ms + 'ms</div>speed</div>';
+  html += '<div class="summary-stat"><div class="num">' + report.analysis_duration_ms + 'ms</div>speed</div>'; if (stats.languages) { const langs = Object.keys(stats.languages).filter(l => l !== "unknown"); if (langs.length) html += '<div class="summary-stat"><div class="num" style="font-size:0.75rem">' + langs.join(", ") + '</div>languages</div>'; }
   html += '</div>';
 
-  for (const f of report.findings) {
+  if (report.findings.length === 0) { html += '<div style="padding:1.5rem;text-align:center;background:rgba(0,255,136,0.05);border:1px solid rgba(0,255,136,0.15);border-radius:8px;margin-bottom:1rem"><div style="font-size:2rem;margin-bottom:0.5rem">✅</div><div style="color:var(--green-primary);font-size:0.9rem;font-weight:600">No security issues detected</div><div style="color:var(--text-dim);font-size:0.75rem;margin-top:0.3rem">Static analysis found no vulnerabilities in the submitted code</div></div>'; } for (const f of report.findings) {
     const sev = f.severity.toLowerCase();
     html += '<div class="finding ' + sev + '"><div class="finding-header"><span class="severity-badge ' + sev + '">' + f.severity + '</span><span class="finding-title">' + f.title + '</span></div>';
     html += '<div class="finding-detail">' + f.id + ' · ' + f.file_path + ' · ' + f.line_hint + ' · ' + f.cwe_id + '</div>';
-    html += '<div class="finding-rec">💡 ' + f.recommendation + '</div></div>';
+    html += '<div style="font-size:0.78rem;color:var(--text-secondary);margin:0.4rem 0;line-height:1.4">' + (f.description || '') + '</div>'; html += '<div class="finding-rec">💡 ' + f.recommendation + '</div></div>';
   }
 
   if (attestation) {
