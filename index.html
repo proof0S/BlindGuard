@@ -804,7 +804,7 @@ async function runAudit() {
     const response = await fetch(API_URL + '/audit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: { 'submitted-code.py': code } }),
+      body: JSON.stringify({ files: { [detectFileExt(code)]: code } }),
       signal: controller.signal
     });
     clearTimeout(timeout);
@@ -913,6 +913,19 @@ function renderReport(data, isLive) {
   }
 
   output.innerHTML = html;
+}
+
+function detectFileExt(code) {
+  if (/pragma\s+solidity/.test(code) || /contract\s+\w+/.test(code)) return "submitted.sol";
+  if (/fn\s+main|impl\s+|pub\s+fn/.test(code)) return "submitted.rs";
+  if (/@external|@view|@nonreentrant/.test(code)) return "submitted.vy";
+  if (/module\s+\w+|public\s+entry\s+fun/.test(code)) return "submitted.move";
+  if (/#\[starknet|felt252/.test(code)) return "submitted.cairo";
+  if (/func\s+\w+|package\s+\w+/.test(code)) return "submitted.go";
+  if (/import\s+React|useState|export\s+default/.test(code)) return "submitted.tsx";
+  if (/const\s+\w+\s*=|require\(|module\.exports/.test(code)) return "submitted.js";
+  if (/def\s+\w+|import\s+\w+|class\s+\w+/.test(code)) return "submitted.py";
+  return "submitted.py";
 }
 
 function runLocalAnalysis(code) {
