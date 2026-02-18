@@ -605,7 +605,7 @@ footer a:hover { color: var(--green-primary); }
   <span class="section-label">Live Demo</span>
   <h2 class="section-title">Try it yourself. Right now.</h2>
   <p class="section-desc">Paste code or enter a public GitHub repo URL. BlindGuard analyzes everything inside the TEE. The code never leaves the enclave.</p>
-  <div class="tee-badge"><span class="live-dot"></span> Connected to TEE at 34.187.234.237</div>
+  <div class="tee-badge"><span class="live-dot"></span> Connected to TEE at blindguard.xyz</div>
 
   <div class="audit-tabs">
     <button class="audit-tab active" onclick="switchTab('code')">Paste Code</button>
@@ -628,7 +628,7 @@ footer a:hover { color: var(--green-primary); }
       </div>
 
       <div id="codeTab">
-        <textarea class="code-input" id="codeInput" placeholder="# Paste your Python code here...&#10;# Or click a sample above to try it out."></textarea>
+        <textarea class="code-input" id="codeInput" placeholder="# Paste your code here (Solidity, Rust, Python, Go...)&#10;# Or click a sample above to try it out."></textarea>
       </div>
 
       <div id="repoTab" style="display:none;">
@@ -640,7 +640,7 @@ footer a:hover { color: var(--green-primary); }
             <button class="sample-btn" onclick="loadRepoSample('pallets/flask')">pallets/flask</button>
             <button class="sample-btn" onclick="loadRepoSample('psf/requests')">psf/requests</button>
           </div>
-          <div style="font-size: 0.7rem; color: var(--text-dim);">Only public repos. We fetch Python files, analyze them inside the TEE, and return the report. The code never leaves the enclave.</div>
+          <div style="font-size: 0.7rem; color: var(--text-dim);">Only public repos. We fetch source files (Solidity, Vyper, Rust, Cairo, Move, Python, JS/TS, Go), analyze them inside the TEE, and return the report. The code never leaves the enclave.</div>
         </div>
       </div>
 
@@ -864,7 +864,7 @@ function renderReport(data, isLive) {
   let html = '';
 
   if (!isLive) {
-    html += '<div style="margin-bottom:1rem;padding:0.6rem 0.8rem;background:rgba(255,204,0,0.08);border:1px solid rgba(255,204,0,0.2);border-radius:6px;font-size:0.75rem;color:var(--yellow-med)">⚡ Analysis powered by BlindGuard static engine. For full TEE audit with attestation: <span style="font-family:JetBrains Mono,monospace;font-size:0.7rem">curl -X POST http://34.187.234.237:8000/audit</span></div>';
+    html += '<div style="margin-bottom:1rem;padding:0.6rem 0.8rem;background:rgba(255,204,0,0.08);border:1px solid rgba(255,204,0,0.2);border-radius:6px;font-size:0.75rem;color:var(--yellow-med)">⚡ Analysis powered by BlindGuard static engine. For full TEE audit with attestation: <span style="font-family:JetBrains Mono,monospace;font-size:0.7rem">curl -X POST https://blindguard.xyz/audit</span></div>';
   } else {
     html += '<div style="margin-bottom:1rem;padding:0.6rem 0.8rem;background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);border-radius:6px;font-size:0.75rem;color:var(--green-primary)">🔒 Live TEE response — this analysis ran inside the EigenCompute enclave</div>';
   }
@@ -1014,7 +1014,7 @@ function runLocalAnalysis(code) {
       algorithm: 'sha256',
       nonce: hash(Math.random().toString()).substring(0, 32)
     },
-    verification_note: "Demo mode: In production, the attestation is generated inside the TEE and cryptographically signed. Try the live API: curl -X POST http://34.187.234.237:8000/audit"
+    verification_note: "Demo mode: In production, the attestation is generated inside the TEE and cryptographically signed. Try the live API: curl -X POST https://blindguard.xyz/audit"
   };
 }
 </script>

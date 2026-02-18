@@ -6,7 +6,7 @@ BlindGuard runs entirely inside an EigenCompute TEE (Trusted Execution Environme
 
 Built for the [EigenCloud Open Innovation Challenge](https://ideas.eigencloud.xyz/).
 
-🌐 [Live Demo](http://34.187.234.237:8000/app) · 🔒 [TEE Dashboard](https://verify-sepolia.eigencloud.xyz/app/0x9d70dBAb76b6D97Cba8221Bd897d079DFC3f390E) · 🔧 [Install GitHub App](https://github.com/apps/blindguard-security)
+🌐 [Live Demo](https://blindguard.xyz) · 🔒 [TEE Dashboard](https://verify-sepolia.eigencloud.xyz/app/0x9d70dBAb76b6D97Cba8221Bd897d079DFC3f390E) · 🔧 [Install GitHub App](https://github.com/apps/blindguard-security)
 
 ---
 
@@ -24,20 +24,20 @@ The analysis catches real vulnerabilities: reentrancy in Solidity contracts, har
 
 ### Web UI (easiest)
 
-Open [http://34.187.234.237:8000/app](http://34.187.234.237:8000/app) in your browser. You can paste code directly or enter any public GitHub repo URL. The analysis runs inside the live TEE and returns real results with attestation.
+Open [https://blindguard.xyz](https://blindguard.xyz) in your browser. You can paste code directly or enter any public GitHub repo URL. The analysis runs inside the live TEE and returns real results with attestation.
 
 ### Terminal
 
 Check the agent's identity:
 
 ```bash
-curl http://34.187.234.237:8000/identity
+curl https://blindguard.xyz/identity
 ```
 
 Audit a file:
 
 ```bash
-curl -X POST http://34.187.234.237:8000/audit \
+curl -X POST https://blindguard.xyz/audit \
   -H "Content-Type: application/json" \
   -d '{"files": {"app.py": "API_KEY=\"secret123\"\nimport os\nos.system(input())"}}'
 ```
@@ -45,7 +45,7 @@ curl -X POST http://34.187.234.237:8000/audit \
 Audit a GitHub repo:
 
 ```bash
-curl -X POST http://34.187.234.237:8000/audit-repo \
+curl -X POST https://blindguard.xyz/audit-repo \
   -H "Content-Type: application/json" \
   -d '{"repo_url": "https://github.com/OpenZeppelin/openzeppelin-contracts"}'
 ```
