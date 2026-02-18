@@ -477,23 +477,58 @@ Return [] if no additional issues. Only JSON.
 """
 
 
+def _get_grant_auth() -> tuple[str, str, str]:
+    """Get grant message and signature for deTERMinal auth."""
+    wallet_address = os.environ.get("EIGENAI_WALLET_ADDRESS", "")
+    private_key = os.environ.get("EIGENAI_PRIVATE_KEY", "")
+    grant_message = os.environ.get("EIGENAI_GRANT_MESSAGE", "")
+    grant_signature = os.environ.get("EIGENAI_GRANT_SIGNATURE", "")
+
+    if grant_message and grant_signature and wallet_address:
+        return grant_message, grant_signature, wallet_address
+
+    return "", "", ""
+
+
 def call_eigenai(prompt: str, model: str = "gpt-oss-120b-f16", seed: int = 42) -> str:
+    import urllib.request
+
+    # Method 1: Direct API key auth
     eigenai_url = os.environ.get("EIGENAI_API_URL", "")
     eigenai_key = os.environ.get("EIGENAI_API_KEY", "")
 
     if eigenai_url and eigenai_key:
-        import urllib.request
         req_body = json.dumps({
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "seed": seed, "temperature": 0, "max_tokens": 4000,
         })
         req = urllib.request.Request(eigenai_url, data=req_body.encode(), headers={
-            "Content-Type": "application/json", "Authorization": f"Bearer {eigenai_key}",
+            "Content-Type": "application/json", "X-API-Key": eigenai_key,
         })
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             data = json.loads(resp.read().decode())
         return data["choices"][0]["message"]["content"]
+
+    # Method 2: Grant-based auth via deTERMinal
+    grant_message, grant_signature, wallet_address = _get_grant_auth()
+    if grant_message and grant_signature and wallet_address:
+        determinal_url = "https://determinal-api.eigenarcade.com/api/chat/completions"
+        req_body = json.dumps({
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "seed": seed, "temperature": 0, "max_tokens": 4000,
+            "grantMessage": grant_message,
+            "grantSignature": grant_signature,
+            "walletAddress": wallet_address,
+        })
+        req = urllib.request.Request(determinal_url, data=req_body.encode(), headers={
+            "Content-Type": "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read().decode())
+        return data["choices"][0]["message"]["content"]
+
     return "[]"
 
 
