@@ -311,7 +311,8 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
             self._send_json(result)
 
         elif event_type in ("installation", "installation_repositories"):
-            result = handle_installation_event(payload)
+            token = os.environ.get("GITHUB_TOKEN", "")
+            result = handle_installation_event(payload, token=token, audit_fn=self._run_audit)
             self._send_json(result)
 
         elif event_type == "ping":

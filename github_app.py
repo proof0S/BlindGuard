@@ -273,18 +273,70 @@ def handle_push_event(payload: dict, token: str, audit_fn):
     return {"status": "completed", "state": state, "description": description}
 
 
-def handle_installation_event(payload: dict):
-    """Handle GitHub App installation events."""
+def handle_installation_event(payload: dict, token: str = None, audit_fn=None):
+    """Handle GitHub App installation and repo change events. Triggers full audit on new repos."""
     action = payload.get("action")
     installation = payload.get("installation", {})
     account = installation.get("account", {})
+    sender = payload.get("sender", {}).get("login", "unknown")
 
     if action == "created":
-        print(f"[GitHub App] Installed on {account.get('login')}")
+        print(f"[GitHub App] Installed on {account.get('login')} by {sender}")
+        repos = payload.get("repositories", [])
     elif action == "deleted":
         print(f"[GitHub App] Uninstalled from {account.get('login')}")
+        return {"status": "ok", "action": action}
+    elif action == "added":
+        repos = payload.get("repositories_added", [])
+        print(f"[GitHub App] {len(repos)} repo(s) added by {sender}")
+    elif action == "removed":
+        return {"status": "ok", "action": "removed"}
+    else:
+        return {"status": "ok", "action": action}
 
-    return {"status": "ok", "action": action}
+    if not token or not audit_fn or not repos:
+        return {"status": "ok", "action": action, "repos": len(repos) if repos else 0}
+
+    results = []
+    for repo_info in repos:
+        repo_full = repo_info.get("full_name", "")
+        if not repo_full:
+            continue
+        owner, repo_name = repo_full.split("/", 1)
+        print(f"[GitHub App] Auditing newly added repo: {repo_full}")
+
+        # Get default branch HEAD
+        repo_data = github_api("GET", f"/repos/{owner}/{repo_name}", token)
+        default_branch = repo_data.get("default_branch", "main")
+        ref_data = github_api("GET", f"/repos/{owner}/{repo_name}/git/ref/heads/{default_branch}", token)
+        head_sha = ref_data.get("object", {}).get("sha", "")
+
+        if not head_sha:
+            results.append({"repo": repo_full, "status": "error", "reason": "no HEAD found"})
+            continue
+
+        create_commit_status(owner, repo_name, head_sha, token, "pending", "BlindGuard is auditing this repo...")
+
+        files = get_repo_files(owner, repo_name, head_sha, token)
+        if not files:
+            create_commit_status(owner, repo_name, head_sha, token, "success", "No supported files to analyze")
+            results.append({"repo": repo_full, "status": "no_files"})
+            continue
+
+        report = audit_fn(files)
+        total = report.get("report", {}).get("stats", {}).get("total_findings", 0)
+        state = "failure" if total > 0 else "success"
+        desc = f"{total} security issue(s) found" if total > 0 else "No security issues found"
+        create_commit_status(owner, repo_name, head_sha, token, state, desc)
+
+        audit_report = report.get("report", {})
+        attestation = report.get("attestation", {})
+        commitment = report.get("data_commitment", {})
+        state, desc, comment_body = format_audit_comment(audit_report, attestation, commitment)
+        create_commit_comment(owner, repo_name, head_sha, token, comment_body)
+        results.append({"repo": repo_full, "status": "audited", "findings": total})
+
+    return {"status": "ok", "action": action, "results": results}
 
 
 def handle_release_event(payload: dict, token: str, audit_fn):
