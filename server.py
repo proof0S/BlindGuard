@@ -57,7 +57,7 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
         self._send_json({})
 
     def do_GET(self):
-        if self.path == "/app" or self.path == "/app/":
+        if self.path == "/" or self.path == "/app" or self.path == "/app/":
             # Serve the landing page from TEE
             html_path = os.path.join(os.path.dirname(__file__), "index.html")
             if os.path.exists(html_path):
@@ -66,7 +66,7 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
             else:
                 self._send_html("<h1>BlindGuard</h1><p>index.html not found in TEE</p>", 404)
 
-        elif self.path == "/" or self.path == "/health":
+        elif self.path == "/health":
             self._send_json({
                 "agent": "blindguard",
                 "status": "running",
@@ -221,7 +221,7 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
             path = item["path"]
             if not any(path.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
                 continue
-            if any(skip in path for skip in ["venv/", "node_modules/", ".git/", "__pycache__/", "test_", "tests/", "setup.py", "dist/", "build/", ".min.", "vendor/", "migrations/"]):
+            if any(skip in path for skip in ["venv/", "node_modules/", ".git/", "__pycache__/", "test_", "tests/", "setup.py", "dist/", "build/", ".min.", "vendor/", "migrations/", "_test.go", ".test.js", ".test.ts", ".spec.js", ".spec.ts", "test/", "spec/", "mock", "fixture"]):
                 continue
 
             try:
