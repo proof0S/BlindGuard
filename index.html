@@ -608,8 +608,8 @@ footer a:hover { color: var(--green-primary); }
   <div class="tee-badge"><span class="live-dot"></span> Connected to TEE at blindguard.xyz</div>
 
   <div class="audit-tabs">
-    <button class="audit-tab active" onclick="switchTab('code')">Paste Code</button>
-    <button class="audit-tab" onclick="switchTab('repo')">Audit a Repo</button>
+    <button class="audit-tab active" onclick="switchTab('code', this)">Paste Code</button>
+    <button class="audit-tab" onclick="switchTab('repo', this)">Audit a Repo</button>
   </div>
 
   <div class="audit-container">
@@ -760,10 +760,10 @@ function loadRepoSample(repo) { document.getElementById('repoInput').value = 'ht
 
 let currentTab = 'code';
 
-function switchTab(tab) {
+function switchTab(tab, clickedTab) {
   currentTab = tab;
   document.querySelectorAll('.audit-tab').forEach(t => t.classList.remove('active'));
-  event.target.classList.add('active');
+  if (clickedTab) clickedTab.classList.add('active');
 
   if (tab === 'code') {
     document.getElementById('codeTab').style.display = 'block';
@@ -800,7 +800,7 @@ async function runAudit() {
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), 20000);
     const response = await fetch(API_URL + '/audit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -809,11 +809,18 @@ async function runAudit() {
     });
     clearTimeout(timeout);
     const data = await response.json();
+    if (!response.ok || data.error) {
+      throw new Error(data.error || ('TEE audit failed with status ' + response.status));
+    }
     renderReport(data, true);
   } catch (err) {
-    // Fallback: run local static analysis simulation
-    const data = runLocalAnalysis(code);
-    renderReport(data, false);
+    if (err && err.name === 'AbortError') {
+      // Timeout fallback: keep the demo usable without breaking the UI.
+      const data = runLocalAnalysis(code);
+      renderReport(data, false);
+    } else {
+      output.innerHTML = '<div class="output-placeholder"><div class="shield">⚠️</div><div style="color: var(--red-alert);">TEE error: ' + (err.message || 'Unknown error') + '</div><div style="font-size: 0.7rem; margin-top: 0.3rem;">Check server logs and /health endpoint.</div></div>';
+    }
   } finally {
     btn.disabled = false;
     spinner.style.display = 'none';
