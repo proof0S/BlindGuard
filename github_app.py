@@ -10,17 +10,25 @@ import hashlib
 import hmac
 import time
 import os
+import subprocess
 import urllib.request
 import urllib.error
 import base64
+import tempfile
 from typing import Optional
 
 # JWT for GitHub App authentication (PyJWT not needed, we do it manually)
 
 
+def _normalize_private_key(private_key: str) -> str:
+    """Normalize private key loaded from env (supports escaped newlines)."""
+    if "\\n" in private_key and "\n" not in private_key:
+        return private_key.replace("\\n", "\n")
+    return private_key
+
+
 def create_jwt(app_id: str, private_key: str) -> str:
-    """Create a JWT for GitHub App authentication using manual encoding."""
-    import struct
+    """Create a proper RS256 JWT for GitHub App authentication."""
 
     def b64url(data: bytes) -> str:
         return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
@@ -33,22 +41,41 @@ def create_jwt(app_id: str, private_key: str) -> str:
         "iss": app_id
     }).encode())
 
-    # For RS256 signing we need the private key
-    # In TEE deployment, we use a simpler HMAC approach with the webhook secret
-    # or rely on the installation token directly
-    message = f"{header}.{payload}"
+    message = f"{header}.{payload}".encode()
+    key_material = _normalize_private_key(private_key)
 
-    # Simplified: use HMAC-SHA256 with private key as secret
-    # In production, this would use proper RSA signing
-    sig = hmac.new(private_key.encode(), message.encode(), hashlib.sha256).digest()
-    signature = b64url(sig)
+    # Use OpenSSL for RS256 signing to avoid external Python deps.
+    # GitHub App JWT requires RS256, HMAC signatures are rejected.
+    with tempfile.NamedTemporaryFile("w", delete=False) as key_file:
+        key_file.write(key_material)
+        key_path = key_file.name
+    try:
+        os.chmod(key_path, 0o600)
+        proc = subprocess.run(
+            ["openssl", "dgst", "-sha256", "-sign", key_path],
+            input=message,
+            capture_output=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            err = proc.stderr.decode(errors="replace").strip()
+            print(f"[GitHub App] JWT signing failed: {err}")
+            return ""
+        signature = b64url(proc.stdout)
+    finally:
+        try:
+            os.remove(key_path)
+        except OSError:
+            pass
 
-    return f"{message}.{signature}"
+    return f"{header}.{payload}.{signature}"
 
 
 def get_installation_token(app_id: str, private_key: str, installation_id: str) -> Optional[str]:
     """Get an installation access token from GitHub."""
     jwt_token = create_jwt(app_id, private_key)
+    if not jwt_token:
+        return None
     url = f"https://api.github.com/app/installations/{installation_id}/access_tokens"
 
     req = urllib.request.Request(url, method="POST")
@@ -61,7 +88,10 @@ def get_installation_token(app_id: str, private_key: str, installation_id: str) 
             data = json.loads(resp.read().decode())
             return data.get("token")
     except urllib.error.HTTPError as e:
-        print(f"[GitHub App] Failed to get installation token: {e.code} {e.read().decode()}")
+        print(f"[GitHub App] Failed to get installation token: {e.code} {e.read().decode(errors='replace')}")
+        return None
+    except Exception as e:
+        print(f"[GitHub App] Failed to get installation token: {e}")
         return None
 
 

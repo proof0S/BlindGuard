@@ -270,6 +270,7 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
         if webhook_secret:
             signature = self.headers.get("X-Hub-Signature-256", "")
             if not verify_webhook_signature(body, signature, webhook_secret):
+                print("[Webhook] Invalid signature")
                 self._send_json({"error": "Invalid signature"}, 401)
                 return
 
@@ -282,17 +283,22 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
 
         print(f"[Webhook] Received event: {event_type}")
 
-        if event_type == "push":
-            # Get installation token
+        def resolve_github_token(payload_obj: dict) -> str:
+            """Prefer GitHub App installation token; fallback to PAT."""
             app_id = os.environ.get("GITHUB_APP_ID", "")
             private_key = os.environ.get("GITHUB_APP_PRIVATE_KEY", "")
-            installation_id = str(payload.get("installation", {}).get("id", ""))
+            installation_id = str(payload_obj.get("installation", {}).get("id", ""))
 
-            token = None
-            if installation_id and private_key:
+            if installation_id and app_id and private_key:
                 token = get_installation_token(app_id, private_key, installation_id)
-            if not token:
-                token = os.environ.get("GITHUB_TOKEN", "")
+                if token:
+                    return token
+                print("[Webhook] Installation token unavailable, falling back to GITHUB_TOKEN")
+
+            return os.environ.get("GITHUB_TOKEN", "")
+
+        if event_type == "push":
+            token = resolve_github_token(payload)
 
             if not token:
                 self._send_json({"error": "Could not authenticate with GitHub"}, 500)
@@ -302,7 +308,7 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
             self._send_json(result)
 
         elif event_type == "release":
-            token = os.environ.get("GITHUB_TOKEN", "")
+            token = resolve_github_token(payload)
             if not token:
                 self._send_json({"error": "Could not authenticate with GitHub"}, 500)
                 return
@@ -311,7 +317,7 @@ class BlindGuardHandler(BaseHTTPRequestHandler):
             self._send_json(result)
 
         elif event_type in ("installation", "installation_repositories"):
-            token = os.environ.get("GITHUB_TOKEN", "")
+            token = resolve_github_token(payload)
             result = handle_installation_event(payload, token=token, audit_fn=self._run_audit)
             self._send_json(result)
 
